@@ -25,6 +25,7 @@ static struct {
 	WrenHandle *on_draw;
 	WrenHandle *on_tick;
 	WrenHandle *on_message;
+	WrenHandle *on_change;
 	int cols, rows;         /* what Surface.window asked for */
 	int font_done;
 	int dismiss;
@@ -52,6 +53,7 @@ static const char *module_src =
 "  foreign static every(ms)\n"
 "  foreign static lifetime(ms)\n"
 "  foreign static listen(spec)\n"
+"  foreign static watch(path)\n"
 "  foreign static output(name)\n"
 "  foreign static borderSet(chars, style)\n"
 "  foreign static close(code)\n"
@@ -337,6 +339,11 @@ static void f_listen(WrenVM *vm)
 	msg_listen(wrenGetSlotString(vm, 1));
 }
 
+static void f_watch(WrenVM *vm)
+{
+	msg_watch(wrenGetSlotString(vm, 1));
+}
+
 static void f_output(WrenVM *vm)
 {
 	wl_set_output(wrenGetSlotString(vm, 1));
@@ -571,6 +578,8 @@ static const struct entry methods[] = {
 	{ "Surface", "lifetime(_)",     f_lifetime },
 	// @api Surface.listen(spec)                a name, or a unix socket path
 	{ "Surface", "listen(_)",       f_listen },
+	// @api Surface.watch(path)                 a file another program writes. onChange(path)
+	{ "Surface", "watch(_)",        f_watch },
 	// @api Surface.output(name)                which monitor, as in "eDP-1"
 	{ "Surface", "output(_)",       f_output },
 	// @api Sys.time -> Num                     seconds since the epoch
@@ -595,6 +604,7 @@ static const struct entry methods[] = {
 	// @api onKey(name) -> bool                 false means not handled, no redraw
 	// @api onTick()                            from Surface.every
 	// @api onMessage(line)                     from Surface.listen
+	// @api onChange(path)                      from Surface.watch
 	{ "Surface", "run(_)",          f_run },
 	// @api Grid.text(x, y, str, style)
 	{ "Grid",    "text(_,_,_,_)",   f_text },
@@ -782,6 +792,7 @@ int script_init(const char *path)
 	S.on_draw = wrenMakeCallHandle(S.vm, "onDraw(_)");
 	S.on_tick = wrenMakeCallHandle(S.vm, "onTick()");
 	S.on_message = wrenMakeCallHandle(S.vm, "onMessage(_)");
+	S.on_change = wrenMakeCallHandle(S.vm, "onChange(_)");
 	return 0;
 }
 
@@ -870,6 +881,17 @@ void script_on_message(const char *line)
 	wrenCall(S.vm, S.on_message);
 }
 
+void script_on_change(const char *path)
+{
+	if (!S.vm || !S.app)
+		return;
+
+	wrenEnsureSlots(S.vm, 2);
+	wrenSetSlotHandle(S.vm, 0, S.app);
+	wrenSetSlotString(S.vm, 1, path);
+	wrenCall(S.vm, S.on_change);
+}
+
 size_t script_bytes(void)
 {
 	return S.bytes;
@@ -888,6 +910,8 @@ void script_close(void)
 		wrenReleaseHandle(S.vm, S.on_tick);
 	if (S.on_message)
 		wrenReleaseHandle(S.vm, S.on_message);
+	if (S.on_change)
+		wrenReleaseHandle(S.vm, S.on_change);
 	if (S.app)
 		wrenReleaseHandle(S.vm, S.app);
 

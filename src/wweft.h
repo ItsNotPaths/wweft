@@ -73,6 +73,9 @@ int  msg_fd(int i);
 void msg_read(int i);
 void msg_stop(void);
 int  msg_send(const char *name, const char *text);
+int  msg_watch(const char *path);    /* a file another program writes */
+int  msg_watch_fd(void);
+void msg_watch_read(void);
 
 /* -------------------------------------------------------------- wayland */
 
@@ -111,6 +114,7 @@ int  app_on_key(const char *name);     /* 0 = not handled, no redraw */
 void app_on_blur(void);                /* the surface lost the keyboard */
 void app_on_tick(void);                /* the Surface.every timer fired */
 void app_on_message(const char *line); /* a line arrived on a channel */
+void app_on_change(const char *path);  /* a watched file was written */
 
 /* --------------------------------------------------------------- script */
 /* script_wren.c is the only file that includes wren.h. */
@@ -125,6 +129,7 @@ int  script_on_key(const char *name);   /* 0 = not handled, no redraw */
 void script_on_draw(void);
 void script_on_tick(void);
 void script_on_message(const char *line);
+void script_on_change(const char *path);
 void script_close(void);
 size_t script_bytes(void);              /* live bytes in the Wren heap */
 

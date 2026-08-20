@@ -101,8 +101,8 @@ static void catch_signals(void)
 	sigaction(SIGTERM, &sa, NULL);
 }
 
-/* wayland, key repeat, the script tick, then one for each channel */
-enum { FD_WAYLAND = 0, FD_REPEAT, FD_TICK, FD_FIXED };
+/* wayland, key repeat, the tick, the watches, then one for each channel */
+enum { FD_WAYLAND = 0, FD_REPEAT, FD_TICK, FD_WATCH, FD_FIXED };
 
 int loop_run(void)
 {
@@ -118,6 +118,7 @@ int loop_run(void)
 		fds[FD_WAYLAND] = (struct pollfd){ .fd = wl_get_fd(), .events = POLLIN };
 		fds[FD_REPEAT]  = (struct pollfd){ .fd = input_timer_fd(), .events = POLLIN };
 		fds[FD_TICK]    = (struct pollfd){ .fd = tick_fd, .events = POLLIN };
+		fds[FD_WATCH]   = (struct pollfd){ .fd = msg_watch_fd(), .events = POLLIN };
 
 		channels = msg_count();
 		for (i = 0; i < channels; i++)
@@ -151,6 +152,9 @@ int loop_run(void)
 			if (read(tick_fd, &ticks, sizeof ticks) == sizeof ticks)
 				app_on_tick();
 		}
+
+		if (fds[FD_WATCH].revents & POLLIN)
+			msg_watch_read();
 
 		for (i = 0; i < channels; i++)
 			if (fds[FD_FIXED + i].revents & POLLIN)

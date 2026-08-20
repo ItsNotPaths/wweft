@@ -61,6 +61,15 @@ void app_on_message(const char *line)
 	wl_redraw();
 }
 
+void app_on_change(const char *path)
+{
+	if (getenv("WWEFT_DEBUG"))
+		fprintf(stderr, "change: %s\n", path);
+
+	script_on_change(path);
+	wl_redraw();
+}
+
 int app_on_key(const char *name)
 {
 	if (getenv("WWEFT_DEBUG"))
