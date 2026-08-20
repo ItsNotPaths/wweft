@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "wren.h"
@@ -22,6 +23,8 @@ static struct {
 	WrenHandle *app;        /* the object given to Surface.run */
 	WrenHandle *on_key;     /* the call handle for onKey(_) */
 	WrenHandle *on_draw;
+	WrenHandle *on_tick;
+	WrenHandle *on_message;
 	int cols, rows;         /* what Surface.window asked for */
 	int font_done;
 	int dismiss;            /* close when the keyboard focus goes away */
@@ -41,6 +44,9 @@ static const char *module_src =
 "  foreign static scale(n)\n"
 "  foreign static exclusive(cells)\n"
 "  foreign static dismiss(flag)\n"
+"  foreign static every(ms)\n"
+"  foreign static listen(spec)\n"
+"  foreign static output(name)\n"
 "  foreign static close(code)\n"
 "  foreign static emit(text)\n"
 "  foreign static spawn(cmd)\n"
@@ -106,6 +112,12 @@ static const char *module_src =
 "  static dim { __dim }\n"
 "}\n"
 "Style.setup_()\n"
+"\n"
+"class Sys {\n"
+"  foreign static time\n"
+"  foreign static strftime(format)\n"
+"  foreign static env(name)\n"
+"}\n"
 "\n"
 "class Text {\n"
 "  // ASCII only. Wren carries no Unicode case tables.\n"
@@ -254,6 +266,53 @@ static void f_exclusive(WrenVM *vm)
 static void f_dismiss(WrenVM *vm)
 {
 	S.dismiss = wrenGetSlotBool(vm, 1) ? 1 : 0;
+}
+
+static void f_every(WrenVM *vm)
+{
+	loop_every((int)wrenGetSlotDouble(vm, 1));
+}
+
+static void f_listen(WrenVM *vm)
+{
+	msg_listen(wrenGetSlotString(vm, 1));
+}
+
+static void f_output(WrenVM *vm)
+{
+	wl_set_output(wrenGetSlotString(vm, 1));
+}
+
+static void f_time(WrenVM *vm)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_REALTIME, &ts);
+	wrenSetSlotDouble(vm, 0, (double)ts.tv_sec + (double)ts.tv_nsec / 1e9);
+}
+
+static void f_strftime(WrenVM *vm)
+{
+	const char *format = wrenGetSlotString(vm, 1);
+	char out[256];
+	time_t now = time(NULL);
+	struct tm tm;
+
+	localtime_r(&now, &tm);
+	if (strftime(out, sizeof out, format, &tm) == 0)
+		out[0] = 0;
+
+	wrenSetSlotString(vm, 0, out);
+}
+
+static void f_env(WrenVM *vm)
+{
+	const char *value = getenv(wrenGetSlotString(vm, 1));
+
+	if (value)
+		wrenSetSlotString(vm, 0, value);
+	else
+		wrenSetSlotNull(vm, 0);
 }
 
 static void f_close(WrenVM *vm)
@@ -445,6 +504,18 @@ static const struct entry methods[] = {
 	{ "Surface", "exclusive(_)",    f_exclusive },
 	// @api Surface.dismiss(flag)               close when the focus leaves. Default true
 	{ "Surface", "dismiss(_)",      f_dismiss },
+	// @api Surface.every(ms)                   0 stops it. onTick() is called
+	{ "Surface", "every(_)",        f_every },
+	// @api Surface.listen(spec)                a name, or a unix socket path
+	{ "Surface", "listen(_)",       f_listen },
+	// @api Surface.output(name)                which monitor, as in "eDP-1"
+	{ "Surface", "output(_)",       f_output },
+	// @api Sys.time -> Num                     seconds since the epoch
+	{ "Sys",     "time",            f_time },
+	// @api Sys.strftime(fmt) -> str            local time, as in "%H:%M"
+	{ "Sys",     "strftime(_)",     f_strftime },
+	// @api Sys.env(name) -> str                or null
+	{ "Sys",     "env(_)",          f_env },
 	// @api Surface.close(code)                 exit with this code
 	{ "Surface", "close(_)",        f_close },
 	// @api Surface.emit(text)                  one line to stdout
@@ -640,6 +711,8 @@ int script_init(const char *path)
 
 	S.on_key = wrenMakeCallHandle(S.vm, "onKey(_)");
 	S.on_draw = wrenMakeCallHandle(S.vm, "onDraw(_)");
+	S.on_tick = wrenMakeCallHandle(S.vm, "onTick()");
+	S.on_message = wrenMakeCallHandle(S.vm, "onMessage(_)");
 	return 0;
 }
 
@@ -690,6 +763,29 @@ void script_on_draw(void)
 	wrenCall(S.vm, S.on_draw);
 }
 
+/* Both are optional. A script that calls Surface.every without an onTick
+ * gets a runtime error naming the missing method, which is the right one. */
+void script_on_tick(void)
+{
+	if (!S.vm || !S.app)
+		return;
+
+	wrenEnsureSlots(S.vm, 1);
+	wrenSetSlotHandle(S.vm, 0, S.app);
+	wrenCall(S.vm, S.on_tick);
+}
+
+void script_on_message(const char *line)
+{
+	if (!S.vm || !S.app)
+		return;
+
+	wrenEnsureSlots(S.vm, 2);
+	wrenSetSlotHandle(S.vm, 0, S.app);
+	wrenSetSlotString(S.vm, 1, line);
+	wrenCall(S.vm, S.on_message);
+}
+
 size_t script_bytes(void)
 {
 	return S.bytes;
@@ -704,6 +800,10 @@ void script_close(void)
 		wrenReleaseHandle(S.vm, S.on_key);
 	if (S.on_draw)
 		wrenReleaseHandle(S.vm, S.on_draw);
+	if (S.on_tick)
+		wrenReleaseHandle(S.vm, S.on_tick);
+	if (S.on_message)
+		wrenReleaseHandle(S.vm, S.on_message);
 	if (S.app)
 		wrenReleaseHandle(S.vm, S.app);
 

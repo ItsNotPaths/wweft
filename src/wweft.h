@@ -54,6 +54,16 @@ void render_frame(uint32_t *pixels, int width, int height);
 
 int  loop_run(void);
 void loop_quit(int code);
+void loop_every(int ms);        /* 0 stops the tick */
+
+/* ------------------------------------------------------------- messages */
+
+int  msg_listen(const char *spec);   /* a name, or a path to a unix socket */
+int  msg_count(void);
+int  msg_fd(int i);
+void msg_read(int i);
+void msg_stop(void);
+int  msg_send(const char *name, const char *text);
 
 /* -------------------------------------------------------------- wayland */
 
@@ -62,6 +72,7 @@ void wl_set_anchor(const char *spec);
 void wl_set_margin(int top, int right, int bottom, int left);   /* cells */
 void wl_set_exclusive(int cells);           /* -1 = ignore */
 void wl_set_scale(int n);                   /* 0 = follow the output */
+void wl_set_output(const char *name);       /* "" = the compositor chooses */
 int  wl_connect(void);                      /* bind the globals */
 int  wl_scale(void);                        /* whole number output scale */
 int  wl_open(int cols, int rows);           /* 0 on an axis = fill */
@@ -89,6 +100,8 @@ void app_resize(int cols, int rows);   /* the surface size changed */
 void app_paint(void);                  /* fill the grid before a frame */
 int  app_on_key(const char *name);     /* 0 = not handled, no redraw */
 void app_on_blur(void);                /* the surface lost the keyboard */
+void app_on_tick(void);                /* the Surface.every timer fired */
+void app_on_message(const char *line); /* a line arrived on a channel */
 
 /* --------------------------------------------------------------- script */
 /* script_wren.c is the only file that includes wren.h. */
@@ -99,6 +112,8 @@ int  script_font_done(void);
 int  script_dismiss(void);              /* close when the focus goes away */
 int  script_on_key(const char *name);   /* 0 = not handled, no redraw */
 void script_on_draw(void);
+void script_on_tick(void);
+void script_on_message(const char *line);
 void script_close(void);
 size_t script_bytes(void);              /* live bytes in the Wren heap */
 

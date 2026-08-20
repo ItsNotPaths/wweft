@@ -4,6 +4,7 @@ A scriptable OSD for Wayland. Wren in, cells out.
 
 <img src="imgs/session.png" width="400" alt="session menu"> <img src="imgs/volume.png" width="300" alt="volume popup">
 <img src="imgs/dmenu.png" width="400" alt="dmenu"> <img src="imgs/browser.png" width="400" alt="file browser">
+<img src="imgs/bar.png" width="810" alt="bar: workspaces and a clock">
 
 wweft puts a grid of text cells on a `wlr-layer-shell` surface and gives a
 Wren script the content. One binary, 150 KB, no toolkit. A menu, a bar,
@@ -35,7 +36,7 @@ The choice goes to stdout. Exit code 0 means chosen, 1 means cancelled.
 
 ## API
 
-It is tagged in the source, so it cannot go stale:
+Tagged in source:
 
 ```sh
 grep -o '@api.*' src/script_wren.c | sort
@@ -54,6 +55,8 @@ Key names come from xkbcommon: `a`, `A`, `Left`, `Ctrl+Left`, `Escape`.
 | `examples/volume.wren` | PipeWire volume through `wpctl` |
 | `examples/dmenu.wren` | items on stdin, type to filter |
 | `examples/browser.wren` | file navigator, read only |
+| `examples/bar.wren` | a bar: workspaces, a clock, no keyboard |
+| `examples/hypr.wren` | Hyprland state for `bar.wren`, imported by name |
 
 The palette is four numbers at the top of each script.
 

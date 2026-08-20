@@ -39,6 +39,21 @@ void app_on_blur(void)
 		loop_quit(1);
 }
 
+void app_on_tick(void)
+{
+	script_on_tick();
+	wl_redraw();
+}
+
+void app_on_message(const char *line)
+{
+	if (getenv("WWEFT_DEBUG"))
+		fprintf(stderr, "message: %s\n", line);
+
+	script_on_message(line);
+	wl_redraw();
+}
+
 int app_on_key(const char *name)
 {
 	if (getenv("WWEFT_DEBUG"))
@@ -65,8 +80,15 @@ int main(int argc, char **argv)
 
 	setlocale(LC_CTYPE, "");   /* wcwidth needs a UTF-8 locale */
 
+	/* `wweft --send NAME TEXT` writes one line and exits. It never opens
+	 * a surface. */
+	if (argc == 4 && strcmp(argv[1], "--send") == 0)
+		return msg_send(argv[2], argv[3]) == 0 ? 0 : 1;
+
 	if (argc != 2) {
-		fprintf(stderr, "usage: %s script.wren\n", argv[0]);
+		fprintf(stderr, "usage: %s script.wren\n"
+				"       %s --send <channel> <text>\n",
+			argv[0], argv[0]);
 		return 2;
 	}
 
@@ -87,6 +109,8 @@ int main(int argc, char **argv)
 		       "  WWEFT_DEBUG  write key names to stderr\n"
 		       "  WWEFT_DUMP   write each frame to a file, as a PAM image\n"
 		       "\n"
+		       "\n"
+		       "  --send <channel> <text>   one line to a running wweft\n"
 		       "  --version, --license, --help\n",
 		       argv[0]);
 		return 0;
@@ -128,6 +152,7 @@ int main(int argc, char **argv)
 	}
 
 	code = loop_run();
+	msg_stop();
 
 	if (getenv("WWEFT_DEBUG"))
 		fprintf(stderr, "wren heap at exit: %zu bytes\n", script_bytes());

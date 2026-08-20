@@ -35,6 +35,10 @@ static struct {
 	size_t pool_size;
 
 	int scale;        /* device pixels for one logical pixel */
+	struct wl_output *outputs[8];
+	char output_names[8][64];
+	int output_count;
+	char want_output[64];
 	uint32_t layer_id;
 	uint32_t anchor;
 	int margin[4];    /* cells: top, right, bottom, left */
@@ -86,6 +90,27 @@ void wl_set_scale(int n)
 {
 	if (n > 0)
 		W.scale = n;
+}
+
+/* Empty means: let the compositor choose. */
+void wl_set_output(const char *name)
+{
+	snprintf(W.want_output, sizeof W.want_output, "%s", name ? name : "");
+}
+
+static struct wl_output *chosen_output(void)
+{
+	int i;
+
+	if (!W.want_output[0])
+		return NULL;
+
+	for (i = 0; i < W.output_count; i++)
+		if (strcmp(W.output_names[i], W.want_output) == 0)
+			return W.outputs[i];
+
+	fprintf(stderr, "wweft: no output named %s\n", W.want_output);
+	return NULL;
 }
 
 void wl_set_exclusive(int cells)
@@ -301,7 +326,14 @@ static void out_scale(void *d, struct wl_output *o, int32_t factor)
 
 static void out_name(void *d, struct wl_output *o, const char *name)
 {
-	(void)d; (void)o; (void)name;
+	int i;
+
+	(void)d;
+
+	for (i = 0; i < W.output_count; i++)
+		if (W.outputs[i] == o)
+			snprintf(W.output_names[i], sizeof W.output_names[i],
+				 "%s", name);
 }
 
 static void out_description(void *d, struct wl_output *o, const char *desc)
@@ -338,10 +370,14 @@ static void on_global(void *data, struct wl_registry *reg, uint32_t name,
 		 * be there before the next roundtrip, or the event is lost. */
 		input_bind_seat(W.seat);
 	} else if (strcmp(iface, wl_output_interface.name) == 0) {
+		/* Version 4 carries the name event, which is how a script
+		 * asks for one monitor by name. */
 		struct wl_output *out = wl_registry_bind(reg, name,
 							 &wl_output_interface,
-							 pick(version, 2));
+							 pick(version, 4));
 		wl_output_add_listener(out, &output_listener, NULL);
+		if (W.output_count < 8)
+			W.outputs[W.output_count++] = out;
 	} else if (strcmp(iface, zwlr_layer_shell_v1_interface.name) == 0) {
 		W.shell = wl_registry_bind(reg, name,
 					   &zwlr_layer_shell_v1_interface,
@@ -408,7 +444,7 @@ int wl_open(int cols, int rows)
 
 	W.surface = wl_compositor_create_surface(W.compositor);
 	W.layer = zwlr_layer_shell_v1_get_layer_surface(
-		W.shell, W.surface, NULL, W.layer_id, "wweft");
+		W.shell, W.surface, chosen_output(), W.layer_id, "wweft");
 	zwlr_layer_surface_v1_add_listener(W.layer, &layer_listener, NULL);
 
 	zwlr_layer_surface_v1_set_size(W.layer,
