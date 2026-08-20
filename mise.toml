@@ -1,0 +1,20 @@
+[tasks.deps]
+description = "Install system packages and download the vendored sources"
+run = "./download-deps.sh"
+
+[tasks.build]
+description = "Build the release binary"
+run = "./build.sh"
+
+[tasks.debug]
+description = "Build with symbols and no optimization"
+run = "./build.sh debug"
+
+[tasks.run]
+description = "Build and start wweft"
+depends = ["build"]
+run = "./build/wweft"
+
+[tasks.clean]
+description = "Remove the build output"
+run = "rm -rf build"
