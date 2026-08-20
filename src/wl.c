@@ -188,10 +188,18 @@ static void fail(const char *what)
 
 /* ------------------------------------------------------------- buffers */
 
+/* Set when a redraw found both buffers still in the compositor's hands. The
+ * next release runs it, so the frame is late rather than lost. */
+static bool redraw_pending;
+
+static void draw(void);
+
 static void on_release(void *data, struct wl_buffer *wl)
 {
 	(void)wl;
 	((struct buffer *)data)->busy = false;
+	if (redraw_pending)
+		draw();
 }
 
 static const struct wl_buffer_listener buffer_listener = { on_release };
@@ -295,8 +303,17 @@ static void draw(void)
 {
 	struct buffer *b = free_buffer();
 
-	if (!b || !W.configured)
+	if (!W.configured)
 		return;
+
+	/* Both buffers are on screen or queued. Remember the frame instead of
+	 * dropping it: input arrives in bursts, and the last line of a burst
+	 * is the one carrying the state worth showing. */
+	if (!b) {
+		redraw_pending = true;
+		return;
+	}
+	redraw_pending = false;
 
 	app_paint();
 	render_frame(b->pixels, W.width, W.height);
