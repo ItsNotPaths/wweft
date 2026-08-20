@@ -24,6 +24,7 @@ static struct {
 	int delay;                /* milliseconds before the first repeat */
 	uint32_t repeat_key;      /* the raw key that repeats */
 	char repeat_name[NAME_MAX_LEN];
+	char text[8];             /* what the last key typed, UTF-8 */
 } I = { .timer = -1 };
 
 /* ------------------------------------------------------------- key names */
@@ -57,6 +58,7 @@ static int key_name(xkb_keycode_t code, char *out, size_t size)
 	char base[64];
 	char text[8];
 	int printable;
+	int n;
 
 	if (sym == XKB_KEY_NoSymbol || is_modifier_key(sym))
 		return -1;
@@ -65,8 +67,14 @@ static int key_name(xkb_keycode_t code, char *out, size_t size)
 		return -1;
 
 	/* A printable key already carries the shift, as in "A". */
-	printable = xkb_state_key_get_utf8(I.state, code, text, sizeof text) == 1
-		    && (unsigned char)text[0] >= 0x20;
+	n = xkb_state_key_get_utf8(I.state, code, text, sizeof text);
+	printable = n > 0 && (unsigned char)text[0] >= 0x20;
+
+	/* Ctrl+a types 0x01, which is not text. */
+	if (printable && !mod_on(XKB_MOD_NAME_CTRL) && !mod_on(XKB_MOD_NAME_ALT))
+		snprintf(I.text, sizeof I.text, "%s", text);
+	else
+		I.text[0] = 0;
 
 	out[0] = 0;
 	if (mod_on(XKB_MOD_NAME_CTRL))
@@ -111,6 +119,12 @@ static void repeat_start(xkb_keycode_t code, uint32_t raw, const char *name)
 	I.repeat_key = raw + 1;   /* +1 so that 0 stays "nothing repeats" */
 	snprintf(I.repeat_name, sizeof I.repeat_name, "%s", name);
 	timer_set(I.delay, 1000 / I.rate);
+}
+
+/* The characters the last key typed, or an empty string. */
+const char *input_key_text(void)
+{
+	return I.text;
 }
 
 int input_timer_fd(void)

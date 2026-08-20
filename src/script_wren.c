@@ -48,10 +48,12 @@ static const char *module_src =
 "  foreign static shWait(cmd, ms)\n"
 "  foreign static run(object)\n"
 "\n"
+// @api Surface.sh(cmd), Surface.sh(cmd, ms) -> [out, rc]  popen with a deadline
 "  static sh(cmd) { shWait(cmd, 2000) }\n"
 "  static sh(cmd, ms) { shWait(cmd, ms) }\n"
 "\n"
 "  // The output of a command, one item for each line, empty lines dropped.\n"
+// @api Surface.lines(cmd) -> list         output split, empty lines dropped
 "  static lines(cmd) {\n"
 "    var out = []\n"
 "    for (line in sh(cmd)[0].split(\"\\n\")) {\n"
@@ -68,11 +70,13 @@ static const char *module_src =
 "  foreign static cols\n"
 "  foreign static rows\n"
 "\n"
+// @api Grid.center(y, str, style)
 "  static center(y, str, style) {\n"
 "    text(((cols - width(str)) / 2).floor, y, str, style)\n"
 "  }\n"
 "\n"
 "  // Draw a row of items and give back the column of each one.\n"
+// @api Grid.row(x, y, items, gap, style, selStyle, sel) -> columns
 "  static row(x, y, items, gap, style, selStyle, sel) {\n"
 "    var at = []\n"
 "    for (i in 0...items.count) {\n"
@@ -94,6 +98,7 @@ static const char *module_src =
 "    __sel = define(0xff151515, 0xff7fbfff)\n"
 "    __dim = define(0xff707070, 0xee151515)\n"
 "  }\n"
+// @api Style.base, title, item, sel, dim  ready made style ids
 "  static base { __base }\n"
 "  static title { __title }\n"
 "  static item { __item }\n"
@@ -102,7 +107,32 @@ static const char *module_src =
 "}\n"
 "Style.setup_()\n"
 "\n"
+"class Text {\n"
+"  // ASCII only. Wren carries no Unicode case tables.\n"
+// @api Text.lower(s) -> str               ASCII only
+"  static lower(s) {\n"
+"    var out = \"\"\n"
+"    for (c in s.codePoints) {\n"
+"      out = out + String.fromCodePoint(c >= 65 && c <= 90 ? c + 32 : c)\n"
+"    }\n"
+"    return out\n"
+"  }\n"
+"\n"
+// @api Text.contains(a, b) -> bool        case insensitive
+"  static contains(haystack, needle) {\n"
+"    return lower(haystack).contains(lower(needle))\n"
+"  }\n"
+"\n"
+"  // Safe to put inside a shell command. An apostrophe in a file name\n"
+"  // breaks the command without this.\n"
+// @api Text.quote(s) -> str               safe inside a shell command
+"  static quote(s) {\n"
+"    return \"'\" + s.replace(\"'\", \"'\\\\''\") + \"'\"\n"
+"  }\n"
+"}\n"
+"\n"
 "class Key {\n"
+// @api Key.left, right, up, down, enter, escape, tab, space, backspace, delete, home, end
 "  static left { \"Left\" }\n"
 "  static right { \"Right\" }\n"
 "  static up { \"Up\" }\n"
@@ -110,6 +140,7 @@ static const char *module_src =
 "  static enter { \"Return\" }\n"
 "  static escape { \"Escape\" }\n"
 "  static tab { \"Tab\" }\n"
+"  foreign static text\n"
 "  static space { \"space\" }\n"
 "  static backspace { \"BackSpace\" }\n"
 "  static delete { \"Delete\" }\n"
@@ -130,34 +161,48 @@ static void expand_home(const char *in, char *out, size_t size)
 		snprintf(out, size, "%s", in);
 }
 
+/* Read every byte. A pipe and a /proc file have no size, so this grows the
+ * buffer instead of asking how long the file is. */
 static char *read_whole(const char *path, size_t *len)
 {
 	FILE *f = fopen(path, "rb");
-	char *data;
-	long n;
+	char *data = NULL;
+	size_t used = 0;
+	size_t room = 0;
 
 	if (!f)
 		return NULL;
-	if (fseek(f, 0, SEEK_END) != 0 || (n = ftell(f)) < 0) {
-		fclose(f);
-		return NULL;
-	}
-	rewind(f);
 
-	data = malloc((size_t)n + 1);
-	if (!data) {
-		fclose(f);
-		return NULL;
+	for (;;) {
+		size_t got;
+
+		if (used + 4096 + 1 > room) {
+			char *bigger;
+
+			room = room ? room * 2 : 8192;
+			bigger = realloc(data, room);
+			if (!bigger) {
+				free(data);
+				fclose(f);
+				return NULL;
+			}
+			data = bigger;
+		}
+
+		got = fread(data + used, 1, 4096, f);
+		used += got;
+		if (got < 4096)
+			break;
 	}
-	if (fread(data, 1, (size_t)n, f) != (size_t)n) {
-		free(data);
-		fclose(f);
-		return NULL;
-	}
+
 	fclose(f);
-	data[n] = 0;
+	if (!data)
+		data = calloc(1, 1);
+	else
+		data[used] = 0;
+
 	if (len)
-		*len = (size_t)n;
+		*len = used;
 	return data;
 }
 
@@ -359,6 +404,11 @@ static void f_rows(WrenVM *vm)
 	wrenSetSlotDouble(vm, 0, grid_rows());
 }
 
+static void f_key_text(WrenVM *vm)
+{
+	wrenSetSlotString(vm, 0, input_key_text());
+}
+
 static void f_define(WrenVM *vm)
 {
 	uint32_t fg = (uint32_t)wrenGetSlotDouble(vm, 1);
@@ -379,25 +429,45 @@ struct entry {
 /* CAUTION: a signature that does not match exactly fails at bind time, and
  * the error does not say which one. */
 static const struct entry methods[] = {
+	// @api Surface.font(path, px)              "" searches $WWEFT_FONT, fc-match, built-in
 	{ "Surface", "font(_,_)",       f_font },
+	// @api Surface.window(cols, rows)          0 on an axis fills the output
 	{ "Surface", "window(_,_)",     f_window },
+	// @api Surface.anchor(spec)                "center", "top", "bottom-left", ...
 	{ "Surface", "anchor(_)",       f_anchor },
+	// @api Surface.margin(t, r, b, l)          cells
 	{ "Surface", "margin(_,_,_,_)", f_margin },
+	// @api Surface.layer(name)                 "overlay", "top", "bottom", "background"
 	{ "Surface", "layer(_)",        f_layer },
+	// @api Surface.scale(n)                    0 follows the output
 	{ "Surface", "scale(_)",        f_scale },
+	// @api Surface.exclusive(cells)            -1 popup, 0 none, n reserves n rows
 	{ "Surface", "exclusive(_)",    f_exclusive },
+	// @api Surface.dismiss(flag)               close when the focus leaves. Default true
 	{ "Surface", "dismiss(_)",      f_dismiss },
+	// @api Surface.close(code)                 exit with this code
 	{ "Surface", "close(_)",        f_close },
+	// @api Surface.emit(text)                  one line to stdout
 	{ "Surface", "emit(_)",         f_emit },
+	// @api Surface.spawn(cmd)                  never blocks, never waits
 	{ "Surface", "spawn(_)",        f_spawn },
+	// @api Surface.read(path) -> str           whole file or null. A leading ~ expands
 	{ "Surface", "read(_)",         f_read },
 	{ "Surface", "shWait(_,_)",     f_sh },
+	// @api Surface.run(object)                 object needs onKey(name) and onDraw(grid)
 	{ "Surface", "run(_)",          f_run },
+	// @api Grid.text(x, y, str, style)
 	{ "Grid",    "text(_,_,_,_)",   f_text },
+	// @api Grid.fill(x, y, w, h, style)
 	{ "Grid",    "fill(_,_,_,_,_)", f_fill },
+	// @api Grid.width(str) -> columns          display columns, not code points
 	{ "Grid",    "width(_)",        f_width },
+	// @api Grid.cols, Grid.rows                the size the compositor gave
 	{ "Grid",    "cols",            f_cols },
 	{ "Grid",    "rows",            f_rows },
+	// @api Key.text -> str                     what the key typed, "" for Escape
+	{ "Key",     "text",            f_key_text },
+	// @api Style.define(fg, bg) -> id          0xAARRGGBB, 32 slots
 	{ "Style",   "define(_,_)",     f_define },
 };
 

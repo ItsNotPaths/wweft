@@ -78,6 +78,7 @@ int  wl_dispatch(void);
 struct wl_seat;
 void input_bind_seat(struct wl_seat *seat);
 void input_stop(void);
+const char *input_key_text(void);   /* UTF-8 of the last key, or "" */
 int  input_timer_fd(void);       /* key repeat. -1 while no key repeats */
 void input_timer_fire(void);
 

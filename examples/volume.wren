@@ -18,11 +18,19 @@ var SINK = "@DEFAULT_AUDIO_SINK@"
 var STEP = "5\%"          // Wren needs the backslash for a literal percent
 var WIDTH = 30          // cells in the bar
 
+// Palette. Four numbers, 0xAARRGGBB. Change them and the popup changes.
+var FG = 0xffd8e0d0
+var BG = 0xf2161a16
+var ACCENT = 0xff8ec07c
+var TITLE = Style.define(ACCENT, BG)
+var ITEM = Style.define(FG, BG)
+var DIM = Style.define(0xff6a706a, BG)
+
 // A bar is a filled rectangle, not a row of block characters. A block
 // character is only as wide as the font draws it, so it leaves gaps.
-var BAR_ON = Style.define(0xff7fbfff, 0xff7fbfff)
-var BAR_OFF = Style.define(0xff303030, 0xff303030)
-var BAR_MUTED = Style.define(0xff606060, 0xff606060)
+var BAR_ON = Style.define(ACCENT, ACCENT)
+var BAR_OFF = Style.define(0xff2c322c, 0xff2c322c)
+var BAR_MUTED = Style.define(0xff5a605a, 0xff5a605a)
 
 class Volume {
   construct new() {
@@ -71,9 +79,10 @@ class Volume {
   onDraw(g) {
     var percent = (_level * 100).round
     var filled = (_level * WIDTH).round.min(WIDTH)
-    var style = _muted ? Style.dim : Style.item
+    var style = _muted ? DIM : ITEM
 
-    g.text(2, 1, _muted ? "Muted" : "Volume", Style.title)
+    g.fill(0, 0, g.cols, g.rows, ITEM)   // the palette background
+    g.text(2, 1, _muted ? "Muted" : "Volume", TITLE)
     g.text(g.cols - 6, 1, "%(percent)\%", style)
 
     g.fill(2, 3, filled, 1, _muted ? BAR_MUTED : BAR_ON)

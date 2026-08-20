@@ -1,5 +1,13 @@
 import "wweft" for Surface, Grid, Style, Key
 
+// Palette. Four numbers, 0xAARRGGBB. Change them and the popup changes.
+var FG = 0xffe8d8c8
+var BG = 0xf21d1a18
+var ACCENT = 0xffe06c5a
+var TITLE = Style.define(ACCENT, BG)
+var ITEM = Style.define(FG, BG)
+var SEL = Style.define(BG, ACCENT)
+
 class Session {
   construct new() {
     _items = ["Suspend", "Reboot", "Power off"]
@@ -24,10 +32,11 @@ class Session {
   }
 
   onDraw(g) {
-    g.text(2, 1, "Session", Style.title)
+    g.fill(0, 0, g.cols, g.rows, ITEM)   // the palette background
+    g.text(2, 1, "Session", TITLE)
     var x = 2
     for (i in 0..._items.count) {
-      g.text(x, 3, " %(_items[i]) ", i == _sel ? Style.sel : Style.item)
+      g.text(x, 3, " %(_items[i]) ", i == _sel ? SEL : ITEM)
       x = x + g.width(_items[i]) + 3
     }
   }
