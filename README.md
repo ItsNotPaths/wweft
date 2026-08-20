@@ -7,7 +7,7 @@ A scriptable OSD for Wayland. Wren in, cells out.
 <img src="imgs/bar.png" width="810" alt="bar: workspaces and a clock">
 
 wweft puts a grid of text cells on a `wlr-layer-shell` surface and gives a
-Wren script the content. One binary, 150 KB, no toolkit. A menu, a bar,
+Wren script the content. One binary, ~170 KB, no toolkit. A menu, a bar,
 a volume popup, and a file browser are wren scripts.
 
 ## Build
