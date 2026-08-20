@@ -13,13 +13,12 @@ struct glyph {
 	int left, top;                /* from the pen on the baseline */
 };
 
-int  font_open(const char *path, int px, int scale);   /* NULL = search */
+int  font_open(const char *path, int px, int scale120, int align);
 void font_close(void);
 const struct glyph *font_glyph(uint32_t cp);
 int  font_cell_w(void);
 int  font_cell_h(void);
 int  font_baseline(void);
-int  font_scale(void);
 const char *font_source(void);              /* the path, or "spleen 8x16" */
 
 /* ------------------------------------------------------------------ grid */
@@ -87,6 +86,9 @@ void wl_set_scale(int n);                   /* 0 = follow the output */
 void wl_set_output(const char *name);       /* "" = the compositor chooses */
 int  wl_connect(void);                      /* bind the globals */
 int  wl_scale(void);                        /* whole number output scale */
+int  wl_scale120(void);                     /* device pixels per 120 logical */
+int  wl_align(void);                        /* cell must divide by this */
+void wl_rescale(void);                       /* after the font was reopened */
 int  wl_open(int cols, int rows);           /* 0 on an axis = fill */
 void wl_stop(void);
 void wl_redraw(void);
@@ -115,6 +117,7 @@ void app_on_blur(void);                /* the surface lost the keyboard */
 void app_on_tick(void);                /* the Surface.every timer fired */
 void app_on_message(const char *line); /* a line arrived on a channel */
 void app_on_change(const char *path);  /* a watched file was written */
+void app_rescale(void);                /* the surface scale changed */
 
 /* --------------------------------------------------------------- script */
 /* script_wren.c is the only file that includes wren.h. */
@@ -123,6 +126,7 @@ int  script_init(const char *path);
 void script_set_args(int count, char **args);
 void script_window_size(int *cols, int *rows);
 int  script_font_done(void);
+void script_font(const char **path, int *px);
 int  script_dismiss(void);              /* close when the focus goes away */
 int  script_border(int *style, const char **chars);
 int  script_on_key(const char *name);   /* 0 = not handled, no redraw */

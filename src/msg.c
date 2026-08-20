@@ -26,9 +26,8 @@ static struct {
 
 static int count;
 
-/* A watch is on the directory, never on the file: a careful writer writes a
- * temporary file and renames it over the target, which is a new inode, and
- * a watch on the file itself goes deaf after the first update. */
+/* Watch the directory, never the file: a writer that renames a temporary
+ * file over the target makes a new inode, and a file watch goes deaf. */
 static struct {
 	int wd;
 	char base[256];          /* the file name inside the directory */
@@ -72,8 +71,8 @@ static int open_fifo(const char *path)
 	if (mkfifo(path, 0600) < 0 && errno != EEXIST)
 		return -1;
 
-	/* O_RDWR, not O_RDONLY: it keeps a writer inside this process, so
-	 * poll() never reports a permanent end of file when a sender exits. */
+	/* O_RDWR keeps a writer in this process, so poll() sees no end of
+	 * file when a sender exits. */
 	return open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
 }
 
@@ -128,8 +127,7 @@ void msg_read(int i)
 		size_t line_len;
 
 		if (!end) {
-			/* A line longer than the buffer is dropped, not kept
-			 * forever. */
+			/* Drop an over-long line rather than keep it. */
 			if (M[i].used >= sizeof M[i].buf - 1)
 				M[i].used = 0;
 			return;

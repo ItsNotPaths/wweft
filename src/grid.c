@@ -159,8 +159,7 @@ void grid_clear(int style)
 	}
 }
 
-/* Script coordinates. It writes nothing outside the inner area, so a
- * border can never be painted over. */
+/* Script coordinates. Nothing outside the inner area is writable. */
 static struct cell *at(int x, int y)
 {
 	if (x < 0 || y < 0 || x >= grid_cols() || y >= grid_rows())
@@ -184,9 +183,8 @@ void grid_fill(int x, int y, int w, int h, int style)
 	}
 }
 
-/* The ring around the inner area. It is drawn after the script, so the
- * script cannot damage it. chars holds six code points: the four corners
- * clockwise from the top left, then horizontal, then vertical. */
+/* The ring around the inner area, drawn after the script so it cannot be
+ * painted over. chars holds six code points. */
 void grid_border(int style, const char *chars)
 {
 	uint32_t cp[6];

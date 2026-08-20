@@ -138,16 +138,20 @@ static void open_fallback(int px)
 	snprintf(F.source, sizeof F.source, "spleen 8x16 x%d", F.scale_up);
 }
 
-int font_open(const char *path, int px, int scale)
+/* px is logical. scale120 is device pixels per 120 logical, so 150 is 1.25.
+ * align is 1 under a viewport, else the whole number buffer scale. */
+int font_open(const char *path, int px, int scale120, int align)
 {
 	const char *env;
 
 	memset(&F, 0, sizeof F);
 
-	if (scale < 1)
-		scale = 1;
-	F.scale_dev = scale;
-	px *= scale;              /* the font renders in device pixels */
+	if (scale120 < 1)
+		scale120 = 120;
+	F.scale_dev = align > 0 ? align : 1;
+	px = (px * scale120 + 60) / 120;   /* logical to device pixels */
+	if (px < 1)
+		px = 1;
 
 	if (path && *path && open_ttf(path, px) == 0)
 		return 0;
@@ -254,7 +258,6 @@ const struct glyph *font_glyph(uint32_t cp)
 }
 
 int font_cell_w(void)    { return F.cell_w; }
-int font_scale(void)     { return F.scale_dev; }
 int font_cell_h(void)    { return F.cell_h; }
 int font_baseline(void)  { return F.baseline; }
 const char *font_source(void) { return F.source; }

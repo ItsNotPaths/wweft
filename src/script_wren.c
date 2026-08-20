@@ -28,6 +28,8 @@ static struct {
 	WrenHandle *on_change;
 	int cols, rows;         /* what Surface.window asked for */
 	int font_done;
+	char font_path[PATH_LEN];
+	int font_px;
 	int dismiss;
 	int border_on;
 	int border_style;
@@ -232,14 +234,14 @@ static char *read_whole(const char *path, size_t *len)
 
 /* ------------------------------------------------------- foreign methods */
 
+/* Records only. main.c opens the font, and reopens it on a scale change. */
 static void f_font(WrenVM *vm)
 {
 	const char *path = wrenGetSlotString(vm, 1);
 	int size = (int)wrenGetSlotDouble(vm, 2);
 
-	if (size < 1)
-		size = 16;
-	font_open(path && *path ? path : NULL, size, wl_scale());
+	snprintf(S.font_path, sizeof S.font_path, "%s", path ? path : "");
+	S.font_px = size > 0 ? size : 16;
 	S.font_done = 1;
 }
 
@@ -280,8 +282,8 @@ static void f_dismiss(WrenVM *vm)
 	S.dismiss = wrenGetSlotBool(vm, 1) ? 1 : 0;
 }
 
-/* A name, or six code points of your own: the four corners clockwise from
- * the top left, then the horizontal, then the vertical. */
+/* A name, or six code points: corners clockwise from top left, then the
+ * horizontal, then the vertical. */
 static void f_border(WrenVM *vm)
 {
 	static const struct {
@@ -393,9 +395,9 @@ static void f_emit(WrenVM *vm)
 	fflush(stdout);
 }
 
-/* Two forks. The middle child exits at once, so the command reparents to
- * init and leaves no zombie. CAUTION: SIGCHLD as SIG_IGN would do the same,
- * but it also makes waitpid fail, and Surface.sh needs the exit status. */
+/* Two forks: the middle child exits, so the command reparents to init and
+ * leaves no zombie. CAUTION: SIGCHLD as SIG_IGN would also do that, but it
+ * breaks waitpid, and Surface.sh needs the exit status. */
 static void f_spawn(WrenVM *vm)
 {
 	const char *cmd = wrenGetSlotString(vm, 1);
@@ -811,6 +813,12 @@ void script_window_size(int *cols, int *rows)
 int script_font_done(void)
 {
 	return S.font_done;
+}
+
+void script_font(const char **path, int *px)
+{
+	*path = S.font_path[0] ? S.font_path : NULL;
+	*px = S.font_px;
 }
 
 int script_dismiss(void)

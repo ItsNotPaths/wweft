@@ -1,4 +1,5 @@
-/* poll() over every file descriptor. Step 1 has one: the Wayland socket. */
+/* poll() over every file descriptor: Wayland, key repeat, the script tick,
+ * file watches, and the message channels. */
 #include <errno.h>
 #include <poll.h>
 #include <stddef.h>

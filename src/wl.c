@@ -11,6 +11,8 @@
 
 #include <wayland-client.h>
 
+#include "fractional-scale-v1-client-protocol.h"
+#include "viewporter-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "wweft.h"
 
@@ -29,12 +31,17 @@ static struct {
 	struct wl_surface *surface;
 	struct zwlr_layer_surface_v1 *layer;
 	struct wl_seat *seat;
+	struct wp_viewporter *viewporter;
+	struct wp_fractional_scale_manager_v1 *fsm;
+	struct wp_viewport *viewport;
+	struct wp_fractional_scale_v1 *fscale;
 
 	struct buffer buffers[2];
 	void *pool_data;
 	size_t pool_size;
 
-	int scale;        /* device pixels for one logical pixel */
+	int scale;        /* whole number fallback, when there is no viewporter */
+	int scale120;     /* device pixels for 120 logical pixels. 0 = not told */
 	struct wl_output *outputs[8];
 	char output_names[8][64];
 	int output_count;
@@ -45,7 +52,13 @@ static struct {
 	int exclusive;    /* cells. -1 = ignore other surfaces */
 	int width;        /* buffer, in device pixels */
 	int height;
+	int logical_w;    /* what the compositor last asked for */
+	int logical_h;
+	int want_cols;    /* what the script asked for. 0 means fill */
+	int want_rows;
 	bool configured;
+	bool drawn;
+	bool got_scale;   /* the compositor told us the fractional scale */
 } W;
 
 /* ------------------------------------------------------- script setters */
@@ -116,6 +129,49 @@ static struct wl_output *chosen_output(void)
 void wl_set_exclusive(int cells)
 {
 	W.exclusive = cells;
+}
+
+/* The globals, never the viewport object: the viewport is made in wl_open
+ * and the font is sized before that. */
+static int fractional(void)
+{
+	return W.viewporter != NULL && W.fsm != NULL;
+}
+
+int wl_scale120(void)
+{
+	return W.scale120 > 0 ? W.scale120 : 120;
+}
+
+int wl_align(void)
+{
+	return fractional() ? 1 : W.scale;
+}
+
+/* Up, so a buffer is never a fraction short and stretched to fit. */
+static int to_device(int logical)
+{
+	return (logical * wl_scale120() + 119) / 120;
+}
+
+static int to_logical(int device)
+{
+	int scale = wl_scale120();
+
+	return (device * 120 + scale / 2) / scale;
+}
+
+/* Device pixels. A script sized axis is a whole number of cells; going
+ * through logical and back would round twice. A filled axis is whatever the
+ * screen is, so render.c paints the strip past the last cell. */
+static void buffer_size(int logical_w, int logical_h, int *px_w, int *px_h)
+{
+	*px_w = W.want_cols > 0 ? W.want_cols * font_cell_w()
+				: (fractional() ? to_device(logical_w)
+						: logical_w * W.scale);
+	*px_h = W.want_rows > 0 ? W.want_rows * font_cell_h()
+				: (fractional() ? to_device(logical_h)
+						: logical_h * W.scale);
 }
 
 static void fail(const char *what)
@@ -255,15 +311,21 @@ void wl_redraw(void)
 static void on_configure(void *data, struct zwlr_layer_surface_v1 *ls,
 			 uint32_t serial, uint32_t width, uint32_t height)
 {
-	int px_w, px_h;
+	int px_w, px_h, cols, rows;
 
 	(void)data;
+
+	if (getenv("WWEFT_DEBUG"))
+		fprintf(stderr, "configure: %ux%u logical, scale120=%d\n",
+			width, height, W.scale120);
 
 	zwlr_layer_surface_v1_ack_configure(ls, serial);
 
 	/* The event carries logical pixels. The buffer holds device pixels. */
-	px_w = (int)width * W.scale;
-	px_h = (int)height * W.scale;
+	W.logical_w = (int)width;
+	W.logical_h = (int)height;
+
+	buffer_size((int)width, (int)height, &px_w, &px_h);
 
 	if (px_w < 1 || px_h < 1) {
 		fail("the compositor asked for an empty surface");
@@ -279,9 +341,23 @@ static void on_configure(void *data, struct zwlr_layer_surface_v1 *ls,
 			return;
 		}
 		W.configured = true;
-		app_resize(W.width / font_cell_w(), W.height / font_cell_h());
+		cols = W.width / font_cell_w();
+		rows = W.height / font_cell_h();
+		app_resize(cols > 0 ? cols : 1, rows > 0 ? rows : 1);
 	}
+
+	/* Every configure, not only on a size change: the logical size can
+	 * move while the buffer does not. */
+	if (W.viewport)
+		wp_viewport_set_destination(W.viewport, (int32_t)width,
+					    (int32_t)height);
+
+	/* The scale event follows the first configure, so hold frame one. */
+	if (fractional() && !W.got_scale)
+		return;
+
 	draw();
+	W.drawn = true;
 }
 
 static void on_closed(void *data, struct zwlr_layer_surface_v1 *ls)
@@ -293,6 +369,37 @@ static void on_closed(void *data, struct zwlr_layer_surface_v1 *ls)
 
 static const struct zwlr_layer_surface_v1_listener layer_listener = {
 	on_configure, on_closed
+};
+
+/* ----------------------------------------------------- fractional scale */
+
+static void on_preferred_scale(void *data, struct wp_fractional_scale_v1 *fs,
+			       uint32_t scale)
+{
+	(void)data;
+	(void)fs;
+
+	if (getenv("WWEFT_DEBUG"))
+		fprintf(stderr, "preferred scale: %u/120 = %.3f\n",
+			scale, (double)scale / 120.0);
+
+	if (scale == 0)
+		return;
+
+	W.got_scale = true;
+
+	if ((int)scale == W.scale120)
+		return;
+
+	W.scale120 = (int)scale;
+
+	/* Corrects frame one, and fires again on a move between monitors. */
+	if (W.configured)
+		app_rescale();
+}
+
+static const struct wp_fractional_scale_v1_listener fscale_listener = {
+	on_preferred_scale
 };
 
 /* --------------------------------------------------------------- output */
@@ -366,18 +473,26 @@ static void on_global(void *data, struct wl_registry *reg, uint32_t name,
 	} else if (strcmp(iface, wl_seat_interface.name) == 0) {
 		W.seat = wl_registry_bind(reg, name, &wl_seat_interface,
 					  pick(version, 5));
-		/* The capabilities event follows at once. The listener must
-		 * be there before the next roundtrip, or the event is lost. */
+		/* Listen now: the capabilities event is already on its way,
+		 * and an event with no listener is dropped. */
 		input_bind_seat(W.seat);
 	} else if (strcmp(iface, wl_output_interface.name) == 0) {
-		/* Version 4 carries the name event, which is how a script
-		 * asks for one monitor by name. */
+		/* Version 4 carries the name event. */
 		struct wl_output *out = wl_registry_bind(reg, name,
 							 &wl_output_interface,
 							 pick(version, 4));
 		wl_output_add_listener(out, &output_listener, NULL);
 		if (W.output_count < 8)
 			W.outputs[W.output_count++] = out;
+	} else if (strcmp(iface, wp_viewporter_interface.name) == 0) {
+		if (!getenv("WWEFT_NO_FRACTIONAL"))
+			W.viewporter = wl_registry_bind(reg, name,
+							&wp_viewporter_interface, 1);
+	} else if (strcmp(iface, wp_fractional_scale_manager_v1_interface.name) == 0) {
+		/* Escape hatch for broken fractional scale support. */
+		if (!getenv("WWEFT_NO_FRACTIONAL"))
+			W.fsm = wl_registry_bind(reg, name,
+						 &wp_fractional_scale_manager_v1_interface, 1);
 	} else if (strcmp(iface, zwlr_layer_shell_v1_interface.name) == 0) {
 		W.shell = wl_registry_bind(reg, name,
 					   &zwlr_layer_shell_v1_interface,
@@ -413,6 +528,9 @@ int wl_connect(void)
 	wl_display_roundtrip(W.display);   /* the globals arrive */
 	wl_display_roundtrip(W.display);   /* the output scale arrives */
 
+	/* Fix the guess now, so the cell and the surface use one number. */
+	W.scale120 = W.scale * 120;
+
 	if (!W.compositor || !W.shm || !W.shell) {
 		fail("the compositor has no wlr-layer-shell support");
 		return -1;
@@ -429,12 +547,16 @@ int wl_scale(void)
 int wl_open(int cols, int rows)
 {
 	uint32_t anchor = W.anchor;
-	int cw = font_cell_w() / W.scale;   /* logical cell */
-	int ch = font_cell_h() / W.scale;
-	int zone;
+	int cw, ch, zone;
 
-	/* A 0 axis stretches between two edges and takes the size back from
-	 * the configure event. */
+	W.want_cols = cols;
+	W.want_rows = rows;
+
+	/* The cell is device sized. The layer surface speaks logical. */
+	cw = fractional() ? font_cell_w() : font_cell_w() / W.scale;
+	ch = fractional() ? font_cell_h() : font_cell_h() / W.scale;
+
+	/* A 0 axis stretches between two edges. */
 	if (cols < 1)
 		anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
 			  ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
@@ -443,25 +565,49 @@ int wl_open(int cols, int rows)
 			  ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
 
 	W.surface = wl_compositor_create_surface(W.compositor);
+
+	if (W.viewporter && W.fsm) {
+		W.viewport = wp_viewporter_get_viewport(W.viewporter, W.surface);
+		W.fscale = wp_fractional_scale_manager_v1_get_fractional_scale(
+			W.fsm, W.surface);
+		wp_fractional_scale_v1_add_listener(W.fscale, &fscale_listener,
+						    NULL);
+	}
+
 	W.layer = zwlr_layer_shell_v1_get_layer_surface(
 		W.shell, W.surface, chosen_output(), W.layer_id, "wweft");
 	zwlr_layer_surface_v1_add_listener(W.layer, &layer_listener, NULL);
 
 	zwlr_layer_surface_v1_set_size(W.layer,
-				       cols > 0 ? (uint32_t)(cols * cw) : 0,
-				       rows > 0 ? (uint32_t)(rows * ch) : 0);
+		cols > 0 ? (uint32_t)(fractional() ? to_logical(cols * cw)
+						   : cols * cw) : 0,
+		rows > 0 ? (uint32_t)(fractional() ? to_logical(rows * ch)
+						   : rows * ch) : 0);
 	zwlr_layer_surface_v1_set_anchor(W.layer, anchor);
-	zwlr_layer_surface_v1_set_margin(W.layer, W.margin[0] * ch,
-					 W.margin[1] * cw, W.margin[2] * ch,
-					 W.margin[3] * cw);
+	/* The whole distance at once, or the rounding error multiplies. */
+	zwlr_layer_surface_v1_set_margin(W.layer,
+		fractional() ? to_logical(W.margin[0] * ch) : W.margin[0] * ch,
+		fractional() ? to_logical(W.margin[1] * cw) : W.margin[1] * cw,
+		fractional() ? to_logical(W.margin[2] * ch) : W.margin[2] * ch,
+		fractional() ? to_logical(W.margin[3] * cw) : W.margin[3] * cw);
 
-	zone = W.exclusive < 0 ? -1 : W.exclusive * ch;
+	zone = W.exclusive < 0 ? -1
+			       : (fractional() ? to_logical(W.exclusive * ch)
+					       : W.exclusive * ch);
 	zwlr_layer_surface_v1_set_exclusive_zone(W.layer, zone);
 
 	/* A popup takes the keyboard. A bar that reserves space does not. */
 	zwlr_layer_surface_v1_set_keyboard_interactivity(W.layer,
 							 W.exclusive < 0 ? 1 : 0);
-	wl_surface_set_buffer_scale(W.surface, W.scale);
+	/* With a viewport the buffer scale stays 1. */
+	if (!fractional())
+		wl_surface_set_buffer_scale(W.surface, W.scale);
+
+	if (getenv("WWEFT_DEBUG"))
+		fprintf(stderr, "open: scale120=%d cell=%dx%d ask=%dx%d logical\n",
+			wl_scale120(), font_cell_w(), font_cell_h(),
+			cols > 0 ? (fractional() ? to_logical(cols * cw) : cols * cw) : 0,
+			rows > 0 ? (fractional() ? to_logical(rows * ch) : rows * ch) : 0);
 
 	/* Commit an empty surface. The buffer waits for the configure event. */
 	wl_surface_commit(W.surface);
@@ -471,7 +617,51 @@ int wl_open(int cols, int rows)
 		fail("no configure event");
 		return -1;
 	}
+
+	/* Collect the scale event, which follows the first configure. */
+	if (fractional() && !W.drawn)
+		wl_display_roundtrip(W.display);
+
+	if (!W.drawn) {
+		draw();          /* no scale event came: draw at the guess */
+		W.drawn = true;
+	}
 	return 0;
+}
+
+/* After the font was reopened. It rebuilds at once, because a logical size
+ * that did not change brings no configure. */
+void wl_rescale(void)
+{
+	int cw = font_cell_w();
+	int ch = font_cell_h();
+
+	if (!W.layer || !W.configured)
+		return;
+
+	if (getenv("WWEFT_DEBUG"))
+		fprintf(stderr, "rescale: cell=%dx%d ask=%dx%d logical\n",
+			cw, ch,
+			W.want_cols > 0 ? to_logical(W.want_cols * cw) : 0,
+			W.want_rows > 0 ? to_logical(W.want_rows * ch) : 0);
+
+	zwlr_layer_surface_v1_set_size(W.layer,
+		W.want_cols > 0 ? (uint32_t)to_logical(W.want_cols * cw) : 0,
+		W.want_rows > 0 ? (uint32_t)to_logical(W.want_rows * ch) : 0);
+	wl_surface_commit(W.surface);
+
+	buffer_size(W.logical_w, W.logical_h, &W.width, &W.height);
+	if (make_buffers() < 0) {
+		loop_quit(1);
+		return;
+	}
+	if (W.viewport)
+		wp_viewport_set_destination(W.viewport, W.logical_w, W.logical_h);
+
+	app_resize(W.width / cw > 0 ? W.width / cw : 1,
+		   W.height / ch > 0 ? W.height / ch : 1);
+	draw();
+	W.drawn = true;
 }
 
 void wl_stop(void)
@@ -479,6 +669,14 @@ void wl_stop(void)
 	input_stop();
 	drop_buffers();
 
+	if (W.fscale)
+		wp_fractional_scale_v1_destroy(W.fscale);
+	if (W.viewport)
+		wp_viewport_destroy(W.viewport);
+	if (W.fsm)
+		wp_fractional_scale_manager_v1_destroy(W.fsm);
+	if (W.viewporter)
+		wp_viewporter_destroy(W.viewporter);
 	if (W.layer)
 		zwlr_layer_surface_v1_destroy(W.layer);
 	if (W.surface)

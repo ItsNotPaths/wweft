@@ -14,6 +14,17 @@
 
 #define DEFAULT_SIZE 16
 
+static int env_int(const char *name, int fallback)
+{
+	const char *v = getenv(name);
+	int n;
+
+	if (!v || !*v)
+		return fallback;
+	n = atoi(v);
+	return n > 0 ? n : fallback;
+}
+
 void app_resize(int cols, int rows)
 {
 	if (cols == grid_cols() && rows == grid_rows())
@@ -38,8 +49,7 @@ void app_paint(void)
 		grid_border(style, chars);
 }
 
-/* Focus went to another surface. A popup closes. Exit code 1, the same as
- * Escape, because nothing was chosen. */
+/* Code 1, the same as Escape: nothing was chosen. */
 void app_on_blur(void)
 {
 	if (script_dismiss())
@@ -61,6 +71,28 @@ void app_on_message(const char *line)
 	wl_redraw();
 }
 
+/* One place opens the font, because the scale can change while running. */
+static void open_font(void)
+{
+	const char *path = NULL;
+	int px = env_int("WWEFT_SIZE", DEFAULT_SIZE);
+
+	if (script_font_done())
+		script_font(&path, &px);
+
+	font_open(path, px, wl_scale120(), wl_align());
+}
+
+void app_rescale(void)
+{
+	if (getenv("WWEFT_DEBUG"))
+		fprintf(stderr, "rescale: scale120=%d\n", wl_scale120());
+
+	font_close();
+	open_font();
+	wl_rescale();
+}
+
 void app_on_change(const char *path)
 {
 	if (getenv("WWEFT_DEBUG"))
@@ -78,17 +110,6 @@ int app_on_key(const char *name)
 	return script_on_key(name);
 }
 
-static int env_int(const char *name, int fallback)
-{
-	const char *v = getenv(name);
-	int n;
-
-	if (!v || !*v)
-		return fallback;
-	n = atoi(v);
-	return n > 0 ? n : fallback;
-}
-
 int main(int argc, char **argv)
 {
 	int cols = 0, rows = 0;
@@ -96,8 +117,7 @@ int main(int argc, char **argv)
 
 	setlocale(LC_CTYPE, "");   /* wcwidth needs a UTF-8 locale */
 
-	/* `wweft --send NAME TEXT` writes one line and exits. It never opens
-	 * a surface. */
+	/* Writes one line and exits. No surface. */
 	if (argc == 4 && strcmp(argv[1], "--send") == 0)
 		return msg_send(argv[2], argv[3]) == 0 ? 0 : 1;
 
@@ -140,23 +160,19 @@ int main(int argc, char **argv)
 	grid_reset_styles();
 	script_set_args(argc - 2, argv + 2);   /* Sys.args */
 
-	/* The script sets the font, the geometry, and the styles. It cannot
-	 * draw yet, because the surface has no size until the compositor
-	 * answers. */
+	/* It cannot draw yet: the surface has no size until the configure. */
 	if (script_init(argv[1]) < 0) {
 		script_close();
 		wl_stop();
 		return 1;
 	}
 
-	if (!script_font_done())
-		font_open(NULL, env_int("WWEFT_SIZE", DEFAULT_SIZE), wl_scale());
+	open_font();
 
 	script_window_size(&cols, &rows);
 
-	/* A border lives outside the size the script asked for: 10 by 10 with
-	 * a border is a surface of 12 by 12. An axis that fills the output
-	 * keeps its 0 and loses two cells to the border after the configure. */
+	/* A border is outside the script's size: 10 by 10 becomes 12 by 12.
+	 * A filled axis keeps its 0 and loses two cells at the configure. */
 	if (script_border(NULL, NULL)) {
 		grid_set_inset(1);
 		if (cols > 0)

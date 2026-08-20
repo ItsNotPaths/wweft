@@ -43,6 +43,18 @@ void render_frame(uint32_t *pixels, int width, int height)
 	int base = font_baseline();
 	int cx, cy, x, y;
 
+	/* Paint every pixel first: a filled axis is rarely a whole number of
+	 * cells, and a reused buffer holds the last frame. */
+	{
+		uint32_t fg, bg;
+		int i, n = width * height;
+
+		grid_style_colors(0, &fg, &bg);
+		bg = premultiply(bg);
+		for (i = 0; i < n; i++)
+			pixels[i] = bg;
+	}
+
 	/* Pass 1: the cell backgrounds. */
 	for (cy = 0; cy < grid_full_rows(); cy++) {
 		for (cx = 0; cx < grid_full_cols(); cx++) {

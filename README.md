@@ -69,6 +69,7 @@ The palette is four numbers at the top of each script.
 | `WWEFT_SIZE` | cell height in pixels, default 16 |
 | `WWEFT_DEBUG` | key names to stderr |
 | `WWEFT_DUMP` | write each frame to a file, as a PAM image |
+| `WWEFT_NO_FRACTIONAL` | fall back to whole number scaling |
 
 ## License
 

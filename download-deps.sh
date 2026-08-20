@@ -77,6 +77,10 @@ if [ "$force" = 1 ] || [ ! -f "$proto_dir/wlr-layer-shell-unstable-v1-protocol.c
 	fi
 	gen wlr-layer-shell-unstable-v1 "$layer_xml"
 	gen xdg-shell "$wp/stable/xdg-shell/xdg-shell.xml"
+	# Fractional scale needs both: one reports the scale, the other maps
+	# the buffer onto the logical size.
+	gen viewporter "$wp/stable/viewporter/viewporter.xml"
+	gen fractional-scale-v1 "$wp/staging/fractional-scale/fractional-scale-v1.xml"
 else
 	say "protocols are ready"
 fi
