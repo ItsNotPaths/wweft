@@ -29,6 +29,7 @@ static struct {
 	unsigned char *file;
 	float scale;
 	int cell_w, cell_h, baseline;
+	int scale_dev;           /* device pixels for one logical pixel */
 	int scale_up;            /* whole number scale of the fallback */
 	char source[256];
 	struct entry cache[CACHE_SLOTS];
@@ -85,6 +86,12 @@ static unsigned char *read_file(const char *path, size_t *size)
 	return data;
 }
 
+/* A cell must divide by the scale, or the buffer size is not legal. */
+static int round_up(int v, int m)
+{
+	return ((v + m - 1) / m) * m;
+}
+
 static int open_ttf(const char *path, int px)
 {
 	size_t size;
@@ -111,6 +118,8 @@ static int open_ttf(const char *path, int px)
 		F.cell_w = 1;
 	if (F.cell_h < 1)
 		F.cell_h = 1;
+	F.cell_w = round_up(F.cell_w, F.scale_dev);
+	F.cell_h = round_up(F.cell_h, F.scale_dev);
 
 	snprintf(F.source, sizeof F.source, "%s", path);
 	return 0;
@@ -122,17 +131,22 @@ static void open_fallback(int px)
 	F.scale_up = px / SPLEEN8X16_HEIGHT;
 	if (F.scale_up < 1)
 		F.scale_up = 1;
-	F.cell_w = SPLEEN8X16_WIDTH * F.scale_up;
-	F.cell_h = SPLEEN8X16_HEIGHT * F.scale_up;
-	F.baseline = F.cell_h - 4 * F.scale_up;
+	F.cell_w = round_up(SPLEEN8X16_WIDTH * F.scale_up, F.scale_dev);
+	F.cell_h = round_up(SPLEEN8X16_HEIGHT * F.scale_up, F.scale_dev);
+	F.baseline = SPLEEN8X16_HEIGHT * F.scale_up - 4 * F.scale_up;
 	snprintf(F.source, sizeof F.source, "spleen 8x16 x%d", F.scale_up);
 }
 
-int font_open(const char *path, int px)
+int font_open(const char *path, int px, int scale)
 {
 	const char *env;
 
 	memset(&F, 0, sizeof F);
+
+	if (scale < 1)
+		scale = 1;
+	F.scale_dev = scale;
+	px *= scale;              /* the font renders in device pixels */
 
 	if (path && *path && open_ttf(path, px) == 0)
 		return 0;
@@ -238,6 +252,7 @@ const struct glyph *font_glyph(uint32_t cp)
 }
 
 int font_cell_w(void)    { return F.cell_w; }
+int font_scale(void)     { return F.scale_dev; }
 int font_cell_h(void)    { return F.cell_h; }
 int font_baseline(void)  { return F.baseline; }
 const char *font_source(void) { return F.source; }

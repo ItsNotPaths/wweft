@@ -1,4 +1,4 @@
-/* Internal header. Build step 2: grid, font, render. No Wren, no xkbcommon. */
+/* Internal header. Build step 3: grid, font, render, keys. No Wren yet. */
 #ifndef WWEFT_H
 #define WWEFT_H
 
@@ -12,12 +12,13 @@ struct glyph {
 	int left, top;                /* from the pen on the baseline */
 };
 
-int  font_open(const char *path, int px);   /* path NULL = search. 0 = ok */
+int  font_open(const char *path, int px, int scale);   /* NULL = search */
 void font_close(void);
 const struct glyph *font_glyph(uint32_t cp);
 int  font_cell_w(void);
 int  font_cell_h(void);
 int  font_baseline(void);
+int  font_scale(void);
 const char *font_source(void);              /* the path, or "spleen 8x16" */
 
 /* ------------------------------------------------------------------ grid */
@@ -53,7 +54,9 @@ void loop_quit(int code);
 
 /* -------------------------------------------------------------- wayland */
 
-int  wl_start(int width, int height);
+int  wl_connect(void);                      /* bind the globals */
+int  wl_scale(void);                        /* whole number output scale */
+int  wl_open(int cols, int rows);           /* 0 on an axis = fill */
 void wl_stop(void);
 void wl_redraw(void);
 int  wl_get_fd(void);
@@ -67,5 +70,13 @@ int  wl_dispatch(void);
 struct wl_seat;
 void input_bind_seat(struct wl_seat *seat);
 void input_stop(void);
+int  input_timer_fd(void);       /* key repeat. -1 while no key repeats */
+void input_timer_fire(void);
+
+/* ------------------------------------------------------------------- app */
+/* main.c owns these now. In step 4 they go to the Wren script. */
+
+void app_resize(int cols, int rows);
+int  app_on_key(const char *name);   /* 0 = not handled, no redraw */
 
 #endif

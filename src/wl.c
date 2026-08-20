@@ -1,9 +1,10 @@
-/* Wayland: layer surface, shm buffers, damage. No font, no VM. */
+/* Wayland: layer surface, shm buffers, damage, output scale. */
 #define _GNU_SOURCE
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -28,10 +29,13 @@ static struct {
 	struct wl_surface *surface;
 	struct zwlr_layer_surface_v1 *layer;
 	struct wl_seat *seat;
+
 	struct buffer buffers[2];
 	void *pool_data;
 	size_t pool_size;
-	int width;
+
+	int scale;        /* device pixels for one logical pixel */
+	int width;        /* buffer, in device pixels */
 	int height;
 	bool configured;
 } W;
@@ -51,14 +55,33 @@ static void on_release(void *data, struct wl_buffer *wl)
 
 static const struct wl_buffer_listener buffer_listener = { on_release };
 
+static void drop_buffers(void)
+{
+	int i;
+
+	for (i = 0; i < 2; i++) {
+		if (W.buffers[i].wl)
+			wl_buffer_destroy(W.buffers[i].wl);
+		W.buffers[i].wl = NULL;
+		W.buffers[i].pixels = NULL;
+		W.buffers[i].busy = false;
+	}
+	if (W.pool_data) {
+		munmap(W.pool_data, W.pool_size);
+		W.pool_data = NULL;
+		W.pool_size = 0;
+	}
+}
+
 static int make_buffers(void)
 {
 	int stride = W.width * 4;
-	size_t one = (size_t)stride * W.height;
+	size_t one = (size_t)stride * (size_t)W.height;
 	struct wl_shm_pool *pool;
 	int fd;
 	int i;
 
+	drop_buffers();
 	W.pool_size = one * 2;
 
 	fd = memfd_create("wweft", MFD_CLOEXEC);
@@ -76,6 +99,7 @@ static int make_buffers(void)
 			   MAP_SHARED, fd, 0);
 	if (W.pool_data == MAP_FAILED) {
 		fail("mmap failed");
+		W.pool_data = NULL;
 		close(fd);
 		return -1;
 	}
@@ -104,6 +128,28 @@ static struct buffer *free_buffer(void)
 	return NULL;
 }
 
+/* Debug only: write the buffer we are about to send, as a PAM file. */
+static void dump(const uint32_t *px)
+{
+	const char *path = getenv("WWEFT_DUMP");
+	FILE *f;
+	int i, n = W.width * W.height;
+
+	if (!path || !(f = fopen(path, "wb")))
+		return;
+
+	fprintf(f, "P7\nWIDTH %d\nHEIGHT %d\nDEPTH 4\nMAXVAL 255\n"
+		   "TUPLTYPE RGB_ALPHA\nENDHDR\n", W.width, W.height);
+	for (i = 0; i < n; i++) {
+		unsigned char rgba[4] = {
+			(unsigned char)(px[i] >> 16), (unsigned char)(px[i] >> 8),
+			(unsigned char)px[i], (unsigned char)(px[i] >> 24)
+		};
+		fwrite(rgba, 1, 4, f);
+	}
+	fclose(f);
+}
+
 static void draw(void)
 {
 	struct buffer *b = free_buffer();
@@ -112,6 +158,7 @@ static void draw(void)
 		return;
 
 	render_frame(b->pixels, W.width, W.height);
+	dump(b->pixels);
 
 	b->busy = true;
 	wl_surface_attach(W.surface, b->wl, 0, 0);
@@ -119,26 +166,41 @@ static void draw(void)
 	wl_surface_commit(W.surface);
 }
 
+void wl_redraw(void)
+{
+	draw();
+}
+
 /* ------------------------------------------------------- layer surface */
 
 static void on_configure(void *data, struct zwlr_layer_surface_v1 *ls,
 			 uint32_t serial, uint32_t width, uint32_t height)
 {
+	int px_w, px_h;
+
 	(void)data;
 
 	zwlr_layer_surface_v1_ack_configure(ls, serial);
 
-	if (width > 0)
-		W.width = (int)width;
-	if (height > 0)
-		W.height = (int)height;
+	/* The event carries logical pixels. The buffer holds device pixels. */
+	px_w = (int)width * W.scale;
+	px_h = (int)height * W.scale;
 
-	if (!W.configured) {
+	if (px_w < 1 || px_h < 1) {
+		fail("the compositor asked for an empty surface");
+		loop_quit(1);
+		return;
+	}
+
+	if (px_w != W.width || px_h != W.height || !W.configured) {
+		W.width = px_w;
+		W.height = px_h;
 		if (make_buffers() < 0) {
 			loop_quit(1);
 			return;
 		}
 		W.configured = true;
+		app_resize(W.width / font_cell_w(), W.height / font_cell_h());
 	}
 	draw();
 }
@@ -152,6 +214,49 @@ static void on_closed(void *data, struct zwlr_layer_surface_v1 *ls)
 
 static const struct zwlr_layer_surface_v1_listener layer_listener = {
 	on_configure, on_closed
+};
+
+/* --------------------------------------------------------------- output */
+
+static void out_geometry(void *d, struct wl_output *o, int32_t x, int32_t y,
+			 int32_t pw, int32_t ph, int32_t sub, const char *make,
+			 const char *model, int32_t transform)
+{
+	(void)d; (void)o; (void)x; (void)y; (void)pw; (void)ph;
+	(void)sub; (void)make; (void)model; (void)transform;
+}
+
+static void out_mode(void *d, struct wl_output *o, uint32_t flags,
+		     int32_t w, int32_t h, int32_t refresh)
+{
+	(void)d; (void)o; (void)flags; (void)w; (void)h; (void)refresh;
+}
+
+static void out_done(void *d, struct wl_output *o)
+{
+	(void)d; (void)o;
+}
+
+static void out_scale(void *d, struct wl_output *o, int32_t factor)
+{
+	(void)d; (void)o;
+
+	if (factor > W.scale)
+		W.scale = factor;
+}
+
+static void out_name(void *d, struct wl_output *o, const char *name)
+{
+	(void)d; (void)o; (void)name;
+}
+
+static void out_description(void *d, struct wl_output *o, const char *desc)
+{
+	(void)d; (void)o; (void)desc;
+}
+
+static const struct wl_output_listener output_listener = {
+	out_geometry, out_mode, out_done, out_scale, out_name, out_description
 };
 
 /* ------------------------------------------------------------ registry */
@@ -175,6 +280,14 @@ static void on_global(void *data, struct wl_registry *reg, uint32_t name,
 	} else if (strcmp(iface, wl_seat_interface.name) == 0) {
 		W.seat = wl_registry_bind(reg, name, &wl_seat_interface,
 					  pick(version, 5));
+		/* The capabilities event follows at once. The listener must
+		 * be there before the next roundtrip, or the event is lost. */
+		input_bind_seat(W.seat);
+	} else if (strcmp(iface, wl_output_interface.name) == 0) {
+		struct wl_output *out = wl_registry_bind(reg, name,
+							 &wl_output_interface,
+							 pick(version, 2));
+		wl_output_add_listener(out, &output_listener, NULL);
 	} else if (strcmp(iface, zwlr_layer_shell_v1_interface.name) == 0) {
 		W.shell = wl_registry_bind(reg, name,
 					   &zwlr_layer_shell_v1_interface,
@@ -184,21 +297,18 @@ static void on_global(void *data, struct wl_registry *reg, uint32_t name,
 
 static void on_global_remove(void *data, struct wl_registry *reg, uint32_t name)
 {
-	(void)data;
-	(void)reg;
-	(void)name;
+	(void)data; (void)reg; (void)name;
 }
 
 static const struct wl_registry_listener registry_listener = {
 	on_global, on_global_remove
 };
 
-/* ---------------------------------------------------------------- start */
+/* --------------------------------------------------------------- start */
 
-int wl_start(int width, int height)
+int wl_connect(void)
 {
-	W.width = width;
-	W.height = height;
+	W.scale = 1;
 
 	W.display = wl_display_connect(NULL);
 	if (!W.display) {
@@ -208,15 +318,36 @@ int wl_start(int width, int height)
 
 	W.registry = wl_display_get_registry(W.display);
 	wl_registry_add_listener(W.registry, &registry_listener, NULL);
-	wl_display_roundtrip(W.display);
+	wl_display_roundtrip(W.display);   /* the globals arrive */
+	wl_display_roundtrip(W.display);   /* the output scale arrives */
 
 	if (!W.compositor || !W.shm || !W.shell) {
 		fail("the compositor has no wlr-layer-shell support");
 		return -1;
 	}
 
-	if (W.seat)
-		input_bind_seat(W.seat);
+	return 0;
+}
+
+int wl_scale(void)
+{
+	return W.scale;
+}
+
+int wl_open(int cols, int rows)
+{
+	uint32_t anchor = 0;
+	int cw = font_cell_w() / W.scale;   /* logical cell */
+	int ch = font_cell_h() / W.scale;
+
+	/* A 0 axis stretches between two edges and takes the size back from
+	 * the configure event. */
+	if (cols < 1)
+		anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+			  ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+	if (rows < 1)
+		anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+			  ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
 
 	W.surface = wl_compositor_create_surface(W.compositor);
 	W.layer = zwlr_layer_shell_v1_get_layer_surface(
@@ -224,11 +355,13 @@ int wl_start(int width, int height)
 		ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "wweft");
 	zwlr_layer_surface_v1_add_listener(W.layer, &layer_listener, NULL);
 
-	zwlr_layer_surface_v1_set_size(W.layer, (uint32_t)W.width,
-				       (uint32_t)W.height);
-	zwlr_layer_surface_v1_set_anchor(W.layer, 0);   /* no anchor = centre */
+	zwlr_layer_surface_v1_set_size(W.layer,
+				       cols > 0 ? (uint32_t)(cols * cw) : 0,
+				       rows > 0 ? (uint32_t)(rows * ch) : 0);
+	zwlr_layer_surface_v1_set_anchor(W.layer, anchor);
 	zwlr_layer_surface_v1_set_exclusive_zone(W.layer, -1);
 	zwlr_layer_surface_v1_set_keyboard_interactivity(W.layer, 1);
+	wl_surface_set_buffer_scale(W.surface, W.scale);
 
 	/* Commit an empty surface. The buffer waits for the configure event. */
 	wl_surface_commit(W.surface);
@@ -241,22 +374,11 @@ int wl_start(int width, int height)
 	return 0;
 }
 
-void wl_redraw(void)
-{
-	draw();
-}
-
 void wl_stop(void)
 {
-	int i;
-
 	input_stop();
+	drop_buffers();
 
-	for (i = 0; i < 2; i++)
-		if (W.buffers[i].wl)
-			wl_buffer_destroy(W.buffers[i].wl);
-	if (W.pool_data)
-		munmap(W.pool_data, W.pool_size);
 	if (W.layer)
 		zwlr_layer_surface_v1_destroy(W.layer);
 	if (W.surface)

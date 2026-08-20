@@ -29,9 +29,14 @@ static void catch_signals(void)
 	sigaction(SIGTERM, &sa, NULL);
 }
 
+enum { FD_WAYLAND = 0, FD_TIMER, FD_COUNT };
+
 int loop_run(void)
 {
-	struct pollfd fds[1] = {{ .fd = wl_get_fd(), .events = POLLIN }};
+	struct pollfd fds[FD_COUNT] = {
+		{ .fd = wl_get_fd(),      .events = POLLIN },
+		{ .fd = input_timer_fd(), .events = POLLIN },   /* -1 is ignored */
+	};
 
 	catch_signals();
 
@@ -39,14 +44,14 @@ int loop_run(void)
 		if (wl_prepare() < 0)
 			return 1;
 
-		if (poll(fds, 1, -1) < 0) {
+		if (poll(fds, FD_COUNT, -1) < 0) {
 			wl_cancel();
 			if (errno == EINTR)
 				continue;
 			return 1;
 		}
 
-		if (fds[0].revents & POLLIN) {
+		if (fds[FD_WAYLAND].revents & POLLIN) {
 			if (wl_read() < 0)
 				return 1;
 		} else {
@@ -56,7 +61,10 @@ int loop_run(void)
 		if (wl_dispatch() < 0)
 			return 1;
 
-		if (fds[0].revents & (POLLERR | POLLHUP))
+		if (fds[FD_TIMER].revents & POLLIN)
+			input_timer_fire();
+
+		if (fds[FD_WAYLAND].revents & (POLLERR | POLLHUP))
 			return 1;
 	}
 
