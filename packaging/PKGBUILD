@@ -1,0 +1,76 @@
+# Maintainer: S. Sean Smith <IsItPaths@gmail.com>
+
+pkgname=wweft
+pkgver=1.2
+pkgrel=1
+pkgdesc='A scriptable OSD for Wayland. Wren in, cells out'
+arch=('x86_64')
+url='https://github.com/ItsNotPaths/wweft'
+license=('MIT')
+depends=('wayland' 'libxkbcommon')
+makedepends=('wayland-protocols' 'python')
+# build.sh does its own LTO and strip, and drops the build id.
+options=('!debug' '!lto')
+
+_wren=0.4.0
+_spleen=2.1.0
+_stb=2c980bb59875b0d32144a71867fbdebb2f77cd20
+_wlr=a741f0a
+
+# download-deps.sh fetches the vendored sources at build time. makepkg is not
+# allowed to, so they are declared here at the same pinned versions.
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$pkgver.tar.gz"
+        "wren-$_wren.tar.gz::https://github.com/wren-lang/wren/archive/refs/tags/$_wren.tar.gz"
+        "spleen-$_spleen.tar.gz::https://github.com/fcambus/spleen/releases/download/$_spleen/spleen-$_spleen.tar.gz"
+        "stb_truetype-$_stb.h::https://raw.githubusercontent.com/nothings/stb/$_stb/stb_truetype.h"
+        "wlr-layer-shell-unstable-v1-$_wlr.xml::https://gitlab.freedesktop.org/wlroots/wlr-protocols/-/raw/$_wlr/unstable/wlr-layer-shell-unstable-v1.xml")
+sha256sums=('0c8c2c80d355f124a2cec23f4ca5eec95d44ce4398dbe386610d88ab185da91d'
+            '23c0ddeb6c67a4ed9285bded49f7c91714922c2e7bb88f42428386bf1cf7b339'
+            '8b47c56f1a6eb858fbcf9e34530557404b02fbb3455e38e64fb84473fd0c372f'
+            'ecd30b05e0dd4fea3a13c26810dd9e1992dc379049482c393d5a19e6b5090aab'
+            '87e0b9c837aecd6977f76f3c47d73088b7159871f5d979dc1840f6cadb5e2ed8')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  # Rebuilt from scratch: cp -r into an existing vendor/wren/vm nests a copy.
+  rm -rf vendor build
+  mkdir -p vendor/proto vendor/wren vendor/stb vendor/font
+
+  local wp xml name
+  wp=$(pkg-config --variable=pkgdatadir wayland-protocols)
+
+  for xml in "$srcdir/wlr-layer-shell-unstable-v1-$_wlr.xml" \
+             "$wp/stable/xdg-shell/xdg-shell.xml" \
+             "$wp/stable/viewporter/viewporter.xml" \
+             "$wp/staging/fractional-scale/fractional-scale-v1.xml"; do
+    name=${xml##*/}
+    name=${name%.xml}
+    name=${name%"-$_wlr"}
+    cp -f "$xml" "vendor/proto/$name.xml"
+    wayland-scanner client-header "$xml" "vendor/proto/$name-client-protocol.h"
+    wayland-scanner private-code  "$xml" "vendor/proto/$name-protocol.c"
+  done
+
+  cp -r "$srcdir/wren-$_wren/src/include"  vendor/wren/include
+  cp -r "$srcdir/wren-$_wren/src/vm"       vendor/wren/vm
+  cp -r "$srcdir/wren-$_wren/src/optional" vendor/wren/optional
+
+  cp "$srcdir/stb_truetype-$_stb.h" vendor/stb/stb_truetype.h
+
+  python tools/bdf2h.py "$srcdir/spleen-$_spleen/spleen-8x16.bdf" \
+    vendor/font/spleen8x16.h spleen8x16 32 126
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  # stb_truetype asserts carry __FILE__, which would bake $srcdir into the binary.
+  EXTRA_CFLAGS="-ffile-prefix-map=$srcdir=." ./build.sh --version "$pkgver"
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 build/wweft "$pkgdir/usr/bin/wweft"
+  install -Dm644 -t "$pkgdir/usr/share/wweft/examples" examples/*.wren
+  install -Dm644 -t "$pkgdir/usr/share/doc/$pkgname" README.md
+  install -Dm644 -t "$pkgdir/usr/share/licenses/$pkgname" LICENSE THIRD-PARTY.md
+}
