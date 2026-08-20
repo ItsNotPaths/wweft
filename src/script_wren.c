@@ -30,7 +30,9 @@ static struct {
 	int dismiss;
 	int border_on;
 	int border_style;
-	char border_chars[32];   /* six code points, UTF-8 */            /* close when the keyboard focus goes away */
+	char border_chars[32];   /* six code points, UTF-8 */
+	int argc;                /* what came after the script path */
+	char **argv;            /* close when the keyboard focus goes away */
 	size_t bytes;           /* live bytes in the Wren heap */
 	char dir[PATH_LEN];     /* the directory of the script */
 } S;
@@ -48,6 +50,7 @@ static const char *module_src =
 "  foreign static exclusive(cells)\n"
 "  foreign static dismiss(flag)\n"
 "  foreign static every(ms)\n"
+"  foreign static lifetime(ms)\n"
 "  foreign static listen(spec)\n"
 "  foreign static output(name)\n"
 "  foreign static borderSet(chars, style)\n"
@@ -123,6 +126,7 @@ static const char *module_src =
 "  foreign static time\n"
 "  foreign static strftime(format)\n"
 "  foreign static env(name)\n"
+"  foreign static args\n"
 "}\n"
 "\n"
 "class Text {\n"
@@ -308,6 +312,24 @@ static void f_border(WrenVM *vm)
 static void f_every(WrenVM *vm)
 {
 	loop_every((int)wrenGetSlotDouble(vm, 1));
+}
+
+static void f_lifetime(WrenVM *vm)
+{
+	loop_lifetime((int)wrenGetSlotDouble(vm, 1));
+}
+
+static void f_args(WrenVM *vm)
+{
+	int i;
+
+	wrenEnsureSlots(vm, 2);
+	wrenSetSlotNewList(vm, 0);
+
+	for (i = 0; i < S.argc; i++) {
+		wrenSetSlotString(vm, 1, S.argv[i]);
+		wrenInsertInList(vm, 0, -1, 1);
+	}
 }
 
 static void f_listen(WrenVM *vm)
@@ -545,6 +567,8 @@ static const struct entry methods[] = {
 	{ "Surface", "borderSet(_,_)",  f_border },
 	// @api Surface.every(ms)                   0 stops it. onTick() is called
 	{ "Surface", "every(_)",        f_every },
+	// @api Surface.lifetime(ms)                quit after this long. Any call resets it
+	{ "Surface", "lifetime(_)",     f_lifetime },
 	// @api Surface.listen(spec)                a name, or a unix socket path
 	{ "Surface", "listen(_)",       f_listen },
 	// @api Surface.output(name)                which monitor, as in "eDP-1"
@@ -555,6 +579,8 @@ static const struct entry methods[] = {
 	{ "Sys",     "strftime(_)",     f_strftime },
 	// @api Sys.env(name) -> str                or null
 	{ "Sys",     "env(_)",          f_env },
+	// @api Sys.args -> list                    what came after the script path
+	{ "Sys",     "args",            f_args },
 	// @api Surface.close(code)                 exit with this code
 	{ "Surface", "close(_)",        f_close },
 	// @api Surface.emit(text)                  one line to stdout
@@ -757,6 +783,12 @@ int script_init(const char *path)
 	S.on_tick = wrenMakeCallHandle(S.vm, "onTick()");
 	S.on_message = wrenMakeCallHandle(S.vm, "onMessage(_)");
 	return 0;
+}
+
+void script_set_args(int count, char **args)
+{
+	S.argc = count;
+	S.argv = args;
 }
 
 void script_window_size(int *cols, int *rows)

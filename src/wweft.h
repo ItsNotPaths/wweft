@@ -63,6 +63,7 @@ void render_frame(uint32_t *pixels, int width, int height);
 int  loop_run(void);
 void loop_quit(int code);
 void loop_every(int ms);        /* 0 stops the tick */
+void loop_lifetime(int ms);     /* quit after this long. Any call resets it */
 
 /* ------------------------------------------------------------- messages */
 
@@ -115,6 +116,7 @@ void app_on_message(const char *line); /* a line arrived on a channel */
 /* script_wren.c is the only file that includes wren.h. */
 
 int  script_init(const char *path);
+void script_set_args(int count, char **args);
 void script_window_size(int *cols, int *rows);
 int  script_font_done(void);
 int  script_dismiss(void);              /* close when the focus goes away */

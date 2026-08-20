@@ -57,6 +57,7 @@ Key names come from xkbcommon: `a`, `A`, `Left`, `Ctrl+Left`, `Escape`.
 | `examples/browser.wren` | file navigator, read only |
 | `examples/bar.wren` | a bar: workspaces, a clock, no keyboard |
 | `examples/hypr.wren` | Hyprland state for `bar.wren`, imported by name |
+| `examples/notify.wren` | one notification, one process, ends itself |
 
 The palette is four numbers at the top of each script.
 

@@ -14,6 +14,44 @@ static volatile sig_atomic_t running = 1;
 static int exit_code;
 static int tick_fd = -1;
 
+/* A deadline, not a timer: it costs no descriptor, and any new call to
+ * loop_lifetime starts the countdown again. */
+static struct timespec deadline;
+static int has_deadline;
+
+void loop_lifetime(int ms)
+{
+	if (ms <= 0) {
+		has_deadline = 0;
+		return;
+	}
+
+	clock_gettime(CLOCK_MONOTONIC, &deadline);
+	deadline.tv_sec += ms / 1000;
+	deadline.tv_nsec += (long)(ms % 1000) * 1000000L;
+	if (deadline.tv_nsec >= 1000000000L) {
+		deadline.tv_sec++;
+		deadline.tv_nsec -= 1000000000L;
+	}
+	has_deadline = 1;
+}
+
+/* Milliseconds left, 0 when the time is up, -1 when there is no deadline. */
+static int time_left(void)
+{
+	struct timespec now;
+	long ms;
+
+	if (!has_deadline)
+		return -1;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	ms = (long)(deadline.tv_sec - now.tv_sec) * 1000 +
+	     (deadline.tv_nsec - now.tv_nsec) / 1000000L;
+
+	return ms > 0 ? (int)ms : 0;
+}
+
 /* A whole number of seconds starts on the next second boundary, so a clock
  * changes when the minute does and not up to a second late. */
 void loop_every(int ms)
@@ -88,7 +126,7 @@ int loop_run(void)
 		if (wl_prepare() < 0)
 			return 1;
 
-		if (poll(fds, (nfds_t)n, -1) < 0) {
+		if (poll(fds, (nfds_t)n, time_left()) < 0) {
 			wl_cancel();
 			if (errno == EINTR)
 				continue;
@@ -120,6 +158,9 @@ int loop_run(void)
 
 		if (fds[FD_WAYLAND].revents & (POLLERR | POLLHUP))
 			return 1;
+
+		if (has_deadline && time_left() == 0)
+			loop_quit(0);
 	}
 
 	return exit_code;

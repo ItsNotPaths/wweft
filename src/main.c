@@ -92,8 +92,8 @@ int main(int argc, char **argv)
 	if (argc == 4 && strcmp(argv[1], "--send") == 0)
 		return msg_send(argv[2], argv[3]) == 0 ? 0 : 1;
 
-	if (argc != 2) {
-		fprintf(stderr, "usage: %s script.wren\n"
+	if (argc < 2) {
+		fprintf(stderr, "usage: %s script.wren [args...]\n"
 				"       %s --send <channel> <text>\n",
 			argv[0], argv[0]);
 		return 2;
@@ -110,7 +110,7 @@ int main(int argc, char **argv)
 		return 0;
 	}
 	if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
-		printf("usage: %s script.wren\n"
+		printf("usage: %s script.wren [args...]\n"
 		       "  WWEFT_FONT   path of a TTF file\n"
 		       "  WWEFT_SIZE   cell height in pixels, default 16\n"
 		       "  WWEFT_DEBUG  write key names to stderr\n"
@@ -129,6 +129,7 @@ int main(int argc, char **argv)
 	}
 
 	grid_reset_styles();
+	script_set_args(argc - 2, argv + 2);   /* Sys.args */
 
 	/* The script sets the font, the geometry, and the styles. It cannot
 	 * draw yet, because the surface has no size until the compositor
