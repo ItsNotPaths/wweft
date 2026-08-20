@@ -1,0 +1,91 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag (e.g. v1.0.0)'
+        required: true
+        type: string
+      notes:
+        description: 'Release notes'
+        required: false
+        type: string
+        default: ''
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PROJECT_NAME: wweft
+
+# Linux only, and Wayland only. wweft is a wlr-layer-shell client: there is
+# no X11 path and no other platform to build for.
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # vendor/ is git ignored on purpose: everything in it is output of
+      # download-deps.sh. The cache key follows that script, so a version
+      # bump inside it invalidates the cache.
+      - name: Cache vendor/
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: vendor-${{ hashFiles('download-deps.sh', 'tools/bdf2h.py') }}
+
+      # download-deps.sh installs these itself through apt. Doing it here as
+      # well makes the failure obvious if the runner image ever drops apt.
+      - name: Install build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+              libwayland-dev libwayland-bin wayland-protocols \
+              libxkbcommon-dev pkg-config python3
+
+      # Wren, stb_truetype, the spleen fallback font, and the generated
+      # protocol code. Ubuntu has no wlr-protocols package, so the script
+      # takes that one XML file from the repository at a pinned commit.
+      - name: Download deps
+        run: |
+          chmod +x ./download-deps.sh
+          ./download-deps.sh
+
+      # --version stamps the tag into `wweft --version`. It does not trigger
+      # the workflow again: --public does that, and it is not passed here.
+      - name: Build
+        run: |
+          chmod +x ./build.sh
+          ./build.sh --version "${{ inputs.version }}"
+          ./build/wweft --version
+          ./build/wweft --license | head -3
+
+      # One asset, and it is the binary. The Wren module, the fallback
+      # font, and every licence notice are inside it, so `wweft --license`
+      # satisfies BSD-2 clause 2 with no second file. The example scripts
+      # stay in the repository, where they read without a download.
+      #
+      # CAUTION: the binary links the glibc of this runner. It needs a
+      # system at least as new. It also needs libwayland-client and
+      # libxkbcommon, which any Wayland session already has.
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          PRERELEASE_FLAG=""
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "${{ inputs.version }}" \
+              build/wweft \
+              --target "${{ github.sha }}" \
+              --title "${{ inputs.version }}" \
+              --notes "${{ inputs.notes }}" \
+              $PRERELEASE_FLAG

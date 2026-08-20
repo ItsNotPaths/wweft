@@ -9,6 +9,7 @@ vendor="$root/vendor"
 
 WREN_VERSION=0.4.0
 SPLEEN_VERSION=2.1.0
+WLR_PROTOCOLS_COMMIT=a741f0a
 STB_COMMIT=2c980bb59875b0d32144a71867fbdebb2f77cd20
 
 force=0
@@ -17,16 +18,31 @@ force=0
 say() { printf '==> %s\n' "$1"; }
 
 # ---------------------------------------------------------------- packages
-pkgs="wayland wayland-protocols libxkbcommon wlr-protocols"
-missing=""
-for p in $pkgs; do
-	pacman -Q "$p" >/dev/null 2>&1 || missing="$missing $p"
-done
-if [ -n "$missing" ]; then
-	say "install:$missing"
-	sudo pacman -S --needed --noconfirm $missing
+# Arch is the machine we develop on. apt is what the CI runner has. Anything
+# else installs the three libraries by hand.
+if [ "$(id -u)" = 0 ]; then SUDO=""; else SUDO="sudo"; fi
+
+if command -v pacman >/dev/null 2>&1; then
+	pkgs="wayland wayland-protocols libxkbcommon wlr-protocols"
+	missing=""
+	for p in $pkgs; do
+		pacman -Q "$p" >/dev/null 2>&1 || missing="$missing $p"
+	done
+	if [ -n "$missing" ]; then
+		say "pacman install:$missing"
+		$SUDO pacman -S --needed --noconfirm $missing
+	else
+		say "packages are installed"
+	fi
+elif command -v apt-get >/dev/null 2>&1; then
+	say "apt install"
+	$SUDO apt-get update -qq
+	$SUDO apt-get install -y --no-install-recommends \
+		libwayland-dev libwayland-bin wayland-protocols \
+		libxkbcommon-dev pkg-config python3
 else
-	say "packages are installed"
+	say "unknown package manager"
+	echo "install wayland, wayland-protocols, and libxkbcommon yourself" >&2
 fi
 
 # --------------------------------------------------------------- protocols
@@ -48,8 +64,18 @@ gen() {
 }
 
 wp=$(pkg-config --variable=pkgdatadir wayland-protocols)
+layer_xml=/usr/share/wlr-protocols/unstable/wlr-layer-shell-unstable-v1.xml
+
 if [ "$force" = 1 ] || [ ! -f "$proto_dir/wlr-layer-shell-unstable-v1-protocol.c" ]; then
-	gen wlr-layer-shell-unstable-v1 /usr/share/wlr-protocols/unstable/wlr-layer-shell-unstable-v1.xml
+	# Only Arch packages wlr-protocols. Everywhere else, take the one file
+	# we need from the repository, at a pinned commit.
+	if [ ! -f "$layer_xml" ]; then
+		say "download wlr-layer-shell $WLR_PROTOCOLS_COMMIT"
+		layer_xml="$proto_dir/.wlr-layer-shell-unstable-v1.xml"
+		curl -fsSL -o "$layer_xml" \
+			"https://gitlab.freedesktop.org/wlroots/wlr-protocols/-/raw/$WLR_PROTOCOLS_COMMIT/unstable/wlr-layer-shell-unstable-v1.xml"
+	fi
+	gen wlr-layer-shell-unstable-v1 "$layer_xml"
 	gen xdg-shell "$wp/stable/xdg-shell/xdg-shell.xml"
 else
 	say "protocols are ready"

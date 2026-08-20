@@ -3,8 +3,14 @@
 #include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
+#include "notices.h"
 #include "wweft.h"
+
+#ifndef WWEFT_VERSION
+#define WWEFT_VERSION "dev"
+#endif
 
 #define DEFAULT_SIZE 16
 
@@ -62,6 +68,28 @@ int main(int argc, char **argv)
 	if (argc != 2) {
 		fprintf(stderr, "usage: %s script.wren\n", argv[0]);
 		return 2;
+	}
+
+	if (strcmp(argv[1], "--version") == 0) {
+		printf("wweft %s\n"
+		       "MIT. It carries Wren, stb_truetype, and the Spleen font.\n"
+		       "Run 'wweft --license' for every notice.\n", WWEFT_VERSION);
+		return 0;
+	}
+	if (strcmp(argv[1], "--license") == 0) {
+		fputs(wweft_notices, stdout);
+		return 0;
+	}
+	if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
+		printf("usage: %s script.wren\n"
+		       "  WWEFT_FONT   path of a TTF file\n"
+		       "  WWEFT_SIZE   cell height in pixels, default 16\n"
+		       "  WWEFT_DEBUG  write key names to stderr\n"
+		       "  WWEFT_DUMP   write each frame to a file, as a PAM image\n"
+		       "\n"
+		       "  --version, --license, --help\n",
+		       argv[0]);
+		return 0;
 	}
 
 	if (wl_connect() < 0) {
