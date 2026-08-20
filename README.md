@@ -1,6 +1,6 @@
 # wweft
 
-A scriptable OSD for Wayland. Wren in, cells out.
+WM agnostic wren TUI's/OSD's with no tty spawn/baggage.
 
 <img src="imgs/session.png" width="400" alt="session menu"> <img src="imgs/volume.png" width="300" alt="volume popup">
 <img src="imgs/dmenu.png" width="400" alt="dmenu"> <img src="imgs/browser.png" width="400" alt="file browser">
