@@ -34,6 +34,8 @@ static struct {
 	int border_on;
 	int border_style;
 	char border_chars[32];   /* six code points, UTF-8 */
+	int outline_px;          /* logical pixels. 0 is off */
+	int outline_style;
 	int argc;                /* what came after the script path */
 	char **argv;            /* close when the keyboard focus goes away */
 	size_t bytes;           /* live bytes in the Wren heap */
@@ -58,6 +60,7 @@ static const char *module_src =
 "  foreign static watch(path)\n"
 "  foreign static output(name)\n"
 "  foreign static borderSet(chars, style)\n"
+"  foreign static outlineSet(px, style)\n"
 "  foreign static close(code)\n"
 "  foreign static emit(text)\n"
 "  foreign static spawn(cmd)\n"
@@ -66,6 +69,8 @@ static const char *module_src =
 "  foreign static run(object)\n"
 "\n"
 // @api Surface.sh(cmd[, ms]) -> [out, rc]  popen with a deadline
+"  static outline(px) { outlineSet(px, 0) }\n"
+"  static outline(px, style) { outlineSet(px, style) }\n"
 "  static border(chars) { borderSet(chars, 0) }\n"
 "  static border(chars, style) { borderSet(chars, style) }\n"
 "  static sh(cmd) { shWait(cmd, 2000) }\n"
@@ -311,6 +316,12 @@ static void f_border(WrenVM *vm)
 		}
 	}
 	snprintf(S.border_chars, sizeof S.border_chars, "%s", spec);
+}
+
+static void f_outline(WrenVM *vm)
+{
+	S.outline_px = (int)wrenGetSlotDouble(vm, 1);
+	S.outline_style = (int)wrenGetSlotDouble(vm, 2);
 }
 
 static void f_every(WrenVM *vm)
@@ -574,6 +585,8 @@ static const struct entry methods[] = {
 	{ "Surface", "dismiss(_)",      f_dismiss },
 	// @api Surface.border(chars[, style])      "line" "round" "double" "heavy" "ascii" "block", or six of your own. The window grows one cell on every side
 	{ "Surface", "borderSet(_,_)",  f_border },
+	// @api Surface.outline(px[, style])        a line px logical thick, outside the cells. The surface grows, the grid does not shrink
+	{ "Surface", "outlineSet(_,_)", f_outline },
 	// @api Surface.every(ms)                   0 stops it. onTick() is called
 	{ "Surface", "every(_)",        f_every },
 	// @api Surface.lifetime(ms)                quit after this long. Any call resets it
@@ -601,7 +614,7 @@ static const struct entry methods[] = {
 	// @api Surface.read(path) -> str           whole file or null. A leading ~ expands
 	{ "Surface", "read(_)",         f_read },
 	{ "Surface", "shWait(_,_)",     f_sh },
-	// @api Surface.run(object)                 the object gets onDraw, onKey, onTick, onMessage
+	// @api Surface.run(object)                 the object gets onDraw, onKey, onTick, onMessage, onChange
 	// @api onDraw(grid)                        fill the cells. Called before every frame
 	// @api onKey(name) -> bool                 false means not handled, no redraw
 	// @api onTick()                            from Surface.every
@@ -824,6 +837,13 @@ void script_font(const char **path, int *px)
 int script_dismiss(void)
 {
 	return S.dismiss;
+}
+
+int script_outline(int *style)
+{
+	if (style)
+		*style = S.outline_style;
+	return S.outline_px;
 }
 
 int script_border(int *style, const char **chars)

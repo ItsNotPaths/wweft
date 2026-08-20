@@ -47,6 +47,8 @@ void app_paint(void)
 	/* Last, so the script cannot draw over it. */
 	if (script_border(&style, &chars))
 		grid_border(style, chars);
+
+
 }
 
 /* Code 1, the same as Escape: nothing was chosen. */
@@ -71,6 +73,18 @@ void app_on_message(const char *line)
 	wl_redraw();
 }
 
+/* The script gives logical pixels, so an outline is the same width on any
+ * screen. It grows the surface: the cells never lose room to it. */
+static void apply_outline(void)
+{
+	int style;
+	int px = script_outline(&style);
+	int device = (px * wl_scale120() + 60) / 120;
+
+	wl_set_outline(device);
+	render_set_outline(device, style);
+}
+
 /* One place opens the font, because the scale can change while running. */
 static void open_font(void)
 {
@@ -90,6 +104,7 @@ void app_rescale(void)
 
 	font_close();
 	open_font();
+	apply_outline();
 	wl_rescale();
 }
 
@@ -168,6 +183,7 @@ int main(int argc, char **argv)
 	}
 
 	open_font();
+	apply_outline();
 
 	script_window_size(&cols, &rows);
 

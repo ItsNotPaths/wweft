@@ -56,6 +56,7 @@ static struct {
 	int logical_h;
 	int want_cols;    /* what the script asked for. 0 means fill */
 	int want_rows;
+	int outline;      /* device pixels of outline, outside the cells */
 	bool configured;
 	bool drawn;
 	bool got_scale;   /* the compositor told us the fractional scale */
@@ -96,6 +97,12 @@ void wl_set_margin(int top, int right, int bottom, int left)
 	W.margin[1] = right;
 	W.margin[2] = bottom;
 	W.margin[3] = left;
+}
+
+/* Device pixels added outside the cells, on every side. */
+void wl_set_outline(int device_px)
+{
+	W.outline = device_px > 0 ? device_px : 0;
 }
 
 /* 0 keeps the output scale. Call it before Surface.font. */
@@ -166,10 +173,10 @@ static int to_logical(int device)
  * screen is, so render.c paints the strip past the last cell. */
 static void buffer_size(int logical_w, int logical_h, int *px_w, int *px_h)
 {
-	*px_w = W.want_cols > 0 ? W.want_cols * font_cell_w()
+	*px_w = W.want_cols > 0 ? W.want_cols * font_cell_w() + 2 * W.outline
 				: (fractional() ? to_device(logical_w)
 						: logical_w * W.scale);
-	*px_h = W.want_rows > 0 ? W.want_rows * font_cell_h()
+	*px_h = W.want_rows > 0 ? W.want_rows * font_cell_h() + 2 * W.outline
 				: (fractional() ? to_device(logical_h)
 						: logical_h * W.scale);
 }
@@ -341,8 +348,8 @@ static void on_configure(void *data, struct zwlr_layer_surface_v1 *ls,
 			return;
 		}
 		W.configured = true;
-		cols = W.width / font_cell_w();
-		rows = W.height / font_cell_h();
+		cols = (W.width - 2 * W.outline) / font_cell_w();
+		rows = (W.height - 2 * W.outline) / font_cell_h();
 		app_resize(cols > 0 ? cols : 1, rows > 0 ? rows : 1);
 	}
 
@@ -578,11 +585,16 @@ int wl_open(int cols, int rows)
 		W.shell, W.surface, chosen_output(), W.layer_id, "wweft");
 	zwlr_layer_surface_v1_add_listener(W.layer, &layer_listener, NULL);
 
-	zwlr_layer_surface_v1_set_size(W.layer,
-		cols > 0 ? (uint32_t)(fractional() ? to_logical(cols * cw)
-						   : cols * cw) : 0,
-		rows > 0 ? (uint32_t)(fractional() ? to_logical(rows * ch)
-						   : rows * ch) : 0);
+	{
+		int want_w = cols * cw + 2 * W.outline;
+		int want_h = rows * ch + 2 * W.outline;
+
+		zwlr_layer_surface_v1_set_size(W.layer,
+			cols > 0 ? (uint32_t)(fractional() ? to_logical(want_w)
+							   : want_w) : 0,
+			rows > 0 ? (uint32_t)(fractional() ? to_logical(want_h)
+							   : want_h) : 0);
+	}
 	zwlr_layer_surface_v1_set_anchor(W.layer, anchor);
 	/* The whole distance at once, or the rounding error multiplies. */
 	zwlr_layer_surface_v1_set_margin(W.layer,
@@ -604,10 +616,8 @@ int wl_open(int cols, int rows)
 		wl_surface_set_buffer_scale(W.surface, W.scale);
 
 	if (getenv("WWEFT_DEBUG"))
-		fprintf(stderr, "open: scale120=%d cell=%dx%d ask=%dx%d logical\n",
-			wl_scale120(), font_cell_w(), font_cell_h(),
-			cols > 0 ? (fractional() ? to_logical(cols * cw) : cols * cw) : 0,
-			rows > 0 ? (fractional() ? to_logical(rows * ch) : rows * ch) : 0);
+		fprintf(stderr, "open: scale120=%d cell=%dx%d outline=%d\n",
+			wl_scale120(), font_cell_w(), font_cell_h(), W.outline);
 
 	/* Commit an empty surface. The buffer waits for the configure event. */
 	wl_surface_commit(W.surface);
@@ -640,14 +650,14 @@ void wl_rescale(void)
 		return;
 
 	if (getenv("WWEFT_DEBUG"))
-		fprintf(stderr, "rescale: cell=%dx%d ask=%dx%d logical\n",
-			cw, ch,
-			W.want_cols > 0 ? to_logical(W.want_cols * cw) : 0,
-			W.want_rows > 0 ? to_logical(W.want_rows * ch) : 0);
+		fprintf(stderr, "rescale: cell=%dx%d outline=%d\n",
+			cw, ch, W.outline);
 
 	zwlr_layer_surface_v1_set_size(W.layer,
-		W.want_cols > 0 ? (uint32_t)to_logical(W.want_cols * cw) : 0,
-		W.want_rows > 0 ? (uint32_t)to_logical(W.want_rows * ch) : 0);
+		W.want_cols > 0 ? (uint32_t)to_logical(W.want_cols * cw +
+						       2 * W.outline) : 0,
+		W.want_rows > 0 ? (uint32_t)to_logical(W.want_rows * ch +
+						       2 * W.outline) : 0);
 	wl_surface_commit(W.surface);
 
 	buffer_size(W.logical_w, W.logical_h, &W.width, &W.height);
@@ -658,8 +668,12 @@ void wl_rescale(void)
 	if (W.viewport)
 		wp_viewport_set_destination(W.viewport, W.logical_w, W.logical_h);
 
-	app_resize(W.width / cw > 0 ? W.width / cw : 1,
-		   W.height / ch > 0 ? W.height / ch : 1);
+	{
+		int c = (W.width - 2 * W.outline) / cw;
+		int r = (W.height - 2 * W.outline) / ch;
+
+		app_resize(c > 0 ? c : 1, r > 0 ? r : 1);
+	}
 	draw();
 	W.drawn = true;
 }

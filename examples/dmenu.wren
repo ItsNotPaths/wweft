@@ -12,6 +12,15 @@ import "wweft" for Surface, Grid, Style, Key, Text
 var ROWS = 12           // list rows on screen
 var COLS = 60
 
+// Palette. Four numbers, 0xAARRGGBB.
+var FG = 0xffd8d4e0
+var BG = 0xf216141c
+var ACCENT = 0xffbd93f9
+var PROMPT = Style.define(ACCENT, BG)
+var ITEM = Style.define(FG, BG)
+var SEL = Style.define(BG, ACCENT)
+var DIM = Style.define(0xff6f6a80, BG)
+
 class Menu {
   construct new() {
     _all = []
@@ -69,8 +78,9 @@ class Menu {
   }
 
   onDraw(g) {
-    g.text(1, 0, "> %(_query)", Style.title)
-    g.text(g.cols - 12, 0, "%(_hits.count)/%(_all.count)", Style.dim)
+    g.fill(0, 0, g.cols, g.rows, ITEM)
+    g.text(1, 0, "> %(_query)", PROMPT)
+    g.text(g.cols - 12, 0, "%(_hits.count)/%(_all.count)", DIM)
 
     for (row in 0...ROWS) {
       var i = _top + row
@@ -78,13 +88,14 @@ class Menu {
 
       var line = _hits[i]
       if (g.width(line) > g.cols - 4) line = line[0...(g.cols - 4)]
-      g.fill(0, row + 1, g.cols, 1, i == _sel ? Style.sel : Style.base)
-      g.text(2, row + 1, line, i == _sel ? Style.sel : Style.item)
+      g.fill(0, row + 1, g.cols, 1, i == _sel ? SEL : ITEM)
+      g.text(2, row + 1, line, i == _sel ? SEL : ITEM)
     }
   }
 }
 
 Surface.font("", 16)
+Surface.outline(6, PROMPT)      // pixels outside the cells, not over them
 Surface.anchor("top")
 Surface.margin(6, 0, 0, 0)
 Surface.window(COLS, ROWS + 1)

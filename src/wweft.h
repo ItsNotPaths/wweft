@@ -56,6 +56,7 @@ void grid_style_colors(int id, uint32_t *fg, uint32_t *bg);
 /* ---------------------------------------------------------------- render */
 
 void render_frame(uint32_t *pixels, int width, int height);
+void render_set_outline(int thickness, int style);   /* device pixels */
 
 /* ------------------------------------------------------------------ loop */
 
@@ -84,6 +85,7 @@ void wl_set_margin(int top, int right, int bottom, int left);   /* cells */
 void wl_set_exclusive(int cells);           /* -1 = ignore */
 void wl_set_scale(int n);                   /* 0 = follow the output */
 void wl_set_output(const char *name);       /* "" = the compositor chooses */
+void wl_set_outline(int device_px);         /* grows the surface, not the cells */
 int  wl_connect(void);                      /* bind the globals */
 int  wl_scale(void);                        /* whole number output scale */
 int  wl_scale120(void);                     /* device pixels per 120 logical */
@@ -129,6 +131,7 @@ int  script_font_done(void);
 void script_font(const char **path, int *px);
 int  script_dismiss(void);              /* close when the focus goes away */
 int  script_border(int *style, const char **chars);
+int  script_outline(int *style);        /* thickness in logical pixels */
 int  script_on_key(const char *name);   /* 0 = not handled, no redraw */
 void script_on_draw(void);
 void script_on_tick(void);
