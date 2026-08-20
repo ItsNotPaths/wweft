@@ -1,8 +1,9 @@
-/* Internal header. Build step 3: grid, font, render, keys. No Wren yet. */
+/* Internal header. Build step 4: grid, font, render, keys, Wren. */
 #ifndef WWEFT_H
 #define WWEFT_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 /* ------------------------------------------------------------------ font */
 
@@ -29,11 +30,13 @@ struct cell {
 	uint8_t  cont;    /* second half of a wide glyph. Do not draw */
 };
 
-#define GRID_STYLES 16
+#define GRID_STYLES 32
 
 int  grid_init(int cols, int rows);
 void grid_free(void);
+void grid_reset_styles(void);
 void grid_set_style(int id, uint32_t fg, uint32_t bg);   /* 0xAARRGGBB */
+int  grid_add_style(uint32_t fg, uint32_t bg);           /* new id, or -1 */
 void grid_clear(int style);
 void grid_text(int x, int y, const char *utf8, int style);
 void grid_fill(int x, int y, int w, int h, int style);
@@ -54,6 +57,11 @@ void loop_quit(int code);
 
 /* -------------------------------------------------------------- wayland */
 
+void wl_set_layer(const char *name);        /* before wl_open */
+void wl_set_anchor(const char *spec);
+void wl_set_margin(int top, int right, int bottom, int left);   /* cells */
+void wl_set_exclusive(int cells);           /* -1 = ignore */
+void wl_set_scale(int n);                   /* 0 = follow the output */
 int  wl_connect(void);                      /* bind the globals */
 int  wl_scale(void);                        /* whole number output scale */
 int  wl_open(int cols, int rows);           /* 0 on an axis = fill */
@@ -74,9 +82,23 @@ int  input_timer_fd(void);       /* key repeat. -1 while no key repeats */
 void input_timer_fire(void);
 
 /* ------------------------------------------------------------------- app */
-/* main.c owns these now. In step 4 they go to the Wren script. */
+/* main.c joins the grid, the surface, and the script. */
 
-void app_resize(int cols, int rows);
-int  app_on_key(const char *name);   /* 0 = not handled, no redraw */
+void app_resize(int cols, int rows);   /* the surface size changed */
+void app_paint(void);                  /* fill the grid before a frame */
+int  app_on_key(const char *name);     /* 0 = not handled, no redraw */
+void app_on_blur(void);                /* the surface lost the keyboard */
+
+/* --------------------------------------------------------------- script */
+/* script_wren.c is the only file that includes wren.h. */
+
+int  script_init(const char *path);
+void script_window_size(int *cols, int *rows);
+int  script_font_done(void);
+int  script_dismiss(void);              /* close when the focus goes away */
+int  script_on_key(const char *name);   /* 0 = not handled, no redraw */
+void script_on_draw(void);
+void script_close(void);
+size_t script_bytes(void);              /* live bytes in the Wren heap */
 
 #endif

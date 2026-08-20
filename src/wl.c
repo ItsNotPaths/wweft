@@ -35,10 +35,63 @@ static struct {
 	size_t pool_size;
 
 	int scale;        /* device pixels for one logical pixel */
+	uint32_t layer_id;
+	uint32_t anchor;
+	int margin[4];    /* cells: top, right, bottom, left */
+	int exclusive;    /* cells. -1 = ignore other surfaces */
 	int width;        /* buffer, in device pixels */
 	int height;
 	bool configured;
 } W;
+
+/* ------------------------------------------------------- script setters */
+
+void wl_set_layer(const char *name)
+{
+	if (strcmp(name, "background") == 0)
+		W.layer_id = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
+	else if (strcmp(name, "bottom") == 0)
+		W.layer_id = ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM;
+	else if (strcmp(name, "top") == 0)
+		W.layer_id = ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+	else
+		W.layer_id = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
+}
+
+/* "center", "top", "bottom-left", "top-right", ... */
+void wl_set_anchor(const char *spec)
+{
+	W.anchor = 0;
+
+	if (strstr(spec, "top"))
+		W.anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
+	if (strstr(spec, "bottom"))
+		W.anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+	if (strstr(spec, "left"))
+		W.anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
+	if (strstr(spec, "right"))
+		W.anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+}
+
+void wl_set_margin(int top, int right, int bottom, int left)
+{
+	W.margin[0] = top;
+	W.margin[1] = right;
+	W.margin[2] = bottom;
+	W.margin[3] = left;
+}
+
+/* 0 keeps the output scale. Call it before Surface.font. */
+void wl_set_scale(int n)
+{
+	if (n > 0)
+		W.scale = n;
+}
+
+void wl_set_exclusive(int cells)
+{
+	W.exclusive = cells;
+}
 
 static void fail(const char *what)
 {
@@ -157,6 +210,7 @@ static void draw(void)
 	if (!b || !W.configured)
 		return;
 
+	app_paint();
 	render_frame(b->pixels, W.width, W.height);
 	dump(b->pixels);
 
@@ -309,6 +363,8 @@ static const struct wl_registry_listener registry_listener = {
 int wl_connect(void)
 {
 	W.scale = 1;
+	W.exclusive = -1;
+	W.layer_id = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
 
 	W.display = wl_display_connect(NULL);
 	if (!W.display) {
@@ -336,9 +392,10 @@ int wl_scale(void)
 
 int wl_open(int cols, int rows)
 {
-	uint32_t anchor = 0;
+	uint32_t anchor = W.anchor;
 	int cw = font_cell_w() / W.scale;   /* logical cell */
 	int ch = font_cell_h() / W.scale;
+	int zone;
 
 	/* A 0 axis stretches between two edges and takes the size back from
 	 * the configure event. */
@@ -351,16 +408,23 @@ int wl_open(int cols, int rows)
 
 	W.surface = wl_compositor_create_surface(W.compositor);
 	W.layer = zwlr_layer_shell_v1_get_layer_surface(
-		W.shell, W.surface, NULL,
-		ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "wweft");
+		W.shell, W.surface, NULL, W.layer_id, "wweft");
 	zwlr_layer_surface_v1_add_listener(W.layer, &layer_listener, NULL);
 
 	zwlr_layer_surface_v1_set_size(W.layer,
 				       cols > 0 ? (uint32_t)(cols * cw) : 0,
 				       rows > 0 ? (uint32_t)(rows * ch) : 0);
 	zwlr_layer_surface_v1_set_anchor(W.layer, anchor);
-	zwlr_layer_surface_v1_set_exclusive_zone(W.layer, -1);
-	zwlr_layer_surface_v1_set_keyboard_interactivity(W.layer, 1);
+	zwlr_layer_surface_v1_set_margin(W.layer, W.margin[0] * ch,
+					 W.margin[1] * cw, W.margin[2] * ch,
+					 W.margin[3] * cw);
+
+	zone = W.exclusive < 0 ? -1 : W.exclusive * ch;
+	zwlr_layer_surface_v1_set_exclusive_zone(W.layer, zone);
+
+	/* A popup takes the keyboard. A bar that reserves space does not. */
+	zwlr_layer_surface_v1_set_keyboard_interactivity(W.layer,
+							 W.exclusive < 0 ? 1 : 0);
 	wl_surface_set_buffer_scale(W.surface, W.scale);
 
 	/* Commit an empty surface. The buffer waits for the configure event. */

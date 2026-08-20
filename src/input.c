@@ -176,7 +176,9 @@ static void on_leave(void *data, struct wl_keyboard *kb, uint32_t serial,
 		     struct wl_surface *surface)
 {
 	(void)data; (void)kb; (void)serial; (void)surface;
+
 	repeat_stop();
+	app_on_blur();
 }
 
 static void on_key(void *data, struct wl_keyboard *kb, uint32_t serial,

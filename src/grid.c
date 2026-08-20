@@ -9,9 +9,15 @@
 static struct {
 	struct cell *cells;
 	int cols, rows;
+} G;
+
+/* The styles outlive the cell array, because a resize frees the cells and
+ * the script sets the styles one time. */
+static struct {
 	uint32_t fg[GRID_STYLES];
 	uint32_t bg[GRID_STYLES];
-} G;
+	int used;
+} S;
 
 /* --------------------------------------------------------------- utf-8 */
 
@@ -58,24 +64,42 @@ int grid_str_w(const char *utf8)
 
 /* ---------------------------------------------------------------- grid */
 
-int grid_init(int cols, int rows)
+void grid_reset_styles(void)
 {
 	int i;
 
+	for (i = 0; i < GRID_STYLES; i++) {
+		S.fg[i] = 0xffcccccc;
+		S.bg[i] = 0x00000000;
+	}
+	S.bg[0] = 0xee151515;   /* style 0 is the base: dark and a little clear */
+	S.used = 1;
+}
+
+int grid_add_style(uint32_t fg, uint32_t bg)
+{
+	if (S.used >= GRID_STYLES)
+		return -1;
+
+	S.fg[S.used] = fg;
+	S.bg[S.used] = bg;
+	return S.used++;
+}
+
+int grid_init(int cols, int rows)
+{
 	if (cols < 1 || rows < 1)
 		return -1;
 
+	free(G.cells);
 	G.cells = calloc((size_t)cols * (size_t)rows, sizeof *G.cells);
-	if (!G.cells)
+	if (!G.cells) {
+		G.cols = G.rows = 0;
 		return -1;
+	}
 
 	G.cols = cols;
 	G.rows = rows;
-
-	for (i = 0; i < GRID_STYLES; i++) {
-		G.fg[i] = 0xffcccccc;
-		G.bg[i] = 0x00000000;
-	}
 	return 0;
 }
 
@@ -89,16 +113,16 @@ void grid_set_style(int id, uint32_t fg, uint32_t bg)
 {
 	if (id < 0 || id >= GRID_STYLES)
 		return;
-	G.fg[id] = fg;
-	G.bg[id] = bg;
+	S.fg[id] = fg;
+	S.bg[id] = bg;
 }
 
 void grid_style_colors(int id, uint32_t *fg, uint32_t *bg)
 {
 	if (id < 0 || id >= GRID_STYLES)
 		id = 0;
-	*fg = G.fg[id];
-	*bg = G.bg[id];
+	*fg = S.fg[id];
+	*bg = S.bg[id];
 }
 
 int grid_cols(void) { return G.cols; }

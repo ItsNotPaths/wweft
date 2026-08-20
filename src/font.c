@@ -1,6 +1,10 @@
 /* stb_truetype and the glyph cache. It knows no grid and no Wayland. */
 #define _POSIX_C_SOURCE 200809L
+#include <fcntl.h>
 #include <stdint.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,7 +30,8 @@ struct entry {
 static struct {
 	int bitmap;              /* 1 = the spleen fallback */
 	stbtt_fontinfo info;
-	unsigned char *file;
+	unsigned char *file;     /* the font file, mapped read only */
+	size_t file_size;
 	float scale;
 	int cell_w, cell_h, baseline;
 	int scale_dev;           /* device pixels for one logical pixel */
@@ -57,32 +62,27 @@ static char *read_line_cmd(const char *cmd)
 	return n > 0 ? buf : NULL;
 }
 
-static unsigned char *read_file(const char *path, size_t *size)
+/* Map the font instead of reading it. A Nerd Font is more than 10 MB, and
+ * a mapped file stays out of the heap and is shared between processes. */
+static unsigned char *map_file(const char *path, size_t *size)
 {
-	FILE *f = fopen(path, "rb");
-	unsigned char *data;
-	long n;
+	struct stat st;
+	void *data;
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
 
-	if (!f)
+	if (fd < 0)
 		return NULL;
-	if (fseek(f, 0, SEEK_END) != 0 || (n = ftell(f)) <= 0) {
-		fclose(f);
+	if (fstat(fd, &st) < 0 || st.st_size <= 0) {
+		close(fd);
 		return NULL;
 	}
-	rewind(f);
 
-	data = malloc((size_t)n);
-	if (!data) {
-		fclose(f);
+	data = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+	close(fd);
+	if (data == MAP_FAILED)
 		return NULL;
-	}
-	if (fread(data, 1, (size_t)n, f) != (size_t)n) {
-		free(data);
-		fclose(f);
-		return NULL;
-	}
-	fclose(f);
-	*size = (size_t)n;
+
+	*size = (size_t)st.st_size;
 	return data;
 }
 
@@ -97,12 +97,13 @@ static int open_ttf(const char *path, int px)
 	size_t size;
 	int ascent, descent, gap, advance, lsb;
 
-	F.file = read_file(path, &size);
+	F.file = map_file(path, &size);
 	if (!F.file)
 		return -1;
+	F.file_size = size;
 
 	if (!stbtt_InitFont(&F.info, F.file, stbtt_GetFontOffsetForIndex(F.file, 0))) {
-		free(F.file);
+		munmap(F.file, F.file_size);
 		F.file = NULL;
 		return -1;
 	}
@@ -169,7 +170,8 @@ void font_close(void)
 
 	for (i = 0; i < CACHE_SLOTS; i++)
 		free(F.cache[i].own);
-	free(F.file);
+	if (F.file)
+		munmap(F.file, F.file_size);
 	memset(&F, 0, sizeof F);
 }
 
