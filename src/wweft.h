@@ -41,8 +41,16 @@ void grid_clear(int style);
 void grid_text(int x, int y, const char *utf8, int style);
 void grid_fill(int x, int y, int w, int h, int style);
 int  grid_str_w(const char *utf8);          /* display columns */
-int  grid_cols(void);
+int  grid_cols(void);          /* what the script sees: inside the border */
 int  grid_rows(void);
+int  grid_full_cols(void);     /* what the renderer draws: border included */
+int  grid_full_rows(void);
+
+/* A border of one cell on every side. The script keeps counting from 0, so
+ * nothing in its layout moves. */
+void grid_set_inset(int on);
+int  grid_inset(void);
+void grid_border(int style, const char *chars);   /* TL TR BR BL H V */
 const struct cell *grid_cell(int x, int y);
 void grid_style_colors(int id, uint32_t *fg, uint32_t *bg);
 
@@ -110,6 +118,7 @@ int  script_init(const char *path);
 void script_window_size(int *cols, int *rows);
 int  script_font_done(void);
 int  script_dismiss(void);              /* close when the focus goes away */
+int  script_border(int *style, const char **chars);
 int  script_on_key(const char *name);   /* 0 = not handled, no redraw */
 void script_on_draw(void);
 void script_on_tick(void);

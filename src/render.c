@@ -44,8 +44,8 @@ void render_frame(uint32_t *pixels, int width, int height)
 	int cx, cy, x, y;
 
 	/* Pass 1: the cell backgrounds. */
-	for (cy = 0; cy < grid_rows(); cy++) {
-		for (cx = 0; cx < grid_cols(); cx++) {
+	for (cy = 0; cy < grid_full_rows(); cy++) {
+		for (cx = 0; cx < grid_full_cols(); cx++) {
 			const struct cell *c = grid_cell(cx, cy);
 			uint32_t fg, bg;
 			int x0 = cx * cw, y0 = cy * ch;
@@ -60,8 +60,8 @@ void render_frame(uint32_t *pixels, int width, int height)
 	}
 
 	/* Pass 2: the glyphs. A wide glyph may cross into the next cell. */
-	for (cy = 0; cy < grid_rows(); cy++) {
-		for (cx = 0; cx < grid_cols(); cx++) {
+	for (cy = 0; cy < grid_full_rows(); cy++) {
+		for (cx = 0; cx < grid_full_cols(); cx++) {
 			const struct cell *c = grid_cell(cx, cy);
 			const struct glyph *g;
 			uint32_t fg, bg, src;

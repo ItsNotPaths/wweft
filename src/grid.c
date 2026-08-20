@@ -8,7 +8,8 @@
 
 static struct {
 	struct cell *cells;
-	int cols, rows;
+	int cols, rows;      /* the whole grid, border included */
+	int inset;           /* 1 when a border is on */
 } G;
 
 /* The styles outlive the cell array, because a resize frees the cells and
@@ -125,8 +126,20 @@ void grid_style_colors(int id, uint32_t *fg, uint32_t *bg)
 	*bg = S.bg[id];
 }
 
-int grid_cols(void) { return G.cols; }
-int grid_rows(void) { return G.rows; }
+int grid_cols(void) { return G.cols - 2 * G.inset; }
+int grid_rows(void) { return G.rows - 2 * G.inset; }
+int grid_full_cols(void) { return G.cols; }
+int grid_full_rows(void) { return G.rows; }
+
+void grid_set_inset(int on)
+{
+	G.inset = on ? 1 : 0;
+}
+
+int grid_inset(void)
+{
+	return G.inset;
+}
 
 const struct cell *grid_cell(int x, int y)
 {
@@ -146,18 +159,24 @@ void grid_clear(int style)
 	}
 }
 
+/* Script coordinates. It writes nothing outside the inner area, so a
+ * border can never be painted over. */
+static struct cell *at(int x, int y)
+{
+	if (x < 0 || y < 0 || x >= grid_cols() || y >= grid_rows())
+		return NULL;
+	return &G.cells[(y + G.inset) * G.cols + (x + G.inset)];
+}
+
 void grid_fill(int x, int y, int w, int h, int style)
 {
 	int cx, cy;
 
 	for (cy = y; cy < y + h; cy++) {
-		if (cy < 0 || cy >= G.rows)
-			continue;
 		for (cx = x; cx < x + w; cx++) {
-			struct cell *c;
-			if (cx < 0 || cx >= G.cols)
+			struct cell *c = at(cx, cy);
+			if (!c)
 				continue;
-			c = &G.cells[cy * G.cols + cx];
 			c->cp = 0;
 			c->cont = 0;
 			c->style = (uint8_t)style;
@@ -165,14 +184,48 @@ void grid_fill(int x, int y, int w, int h, int style)
 	}
 }
 
+/* The ring around the inner area. It is drawn after the script, so the
+ * script cannot damage it. chars holds six code points: the four corners
+ * clockwise from the top left, then horizontal, then vertical. */
+void grid_border(int style, const char *chars)
+{
+	uint32_t cp[6];
+	int i, x, y;
+
+	if (!G.inset || G.cols < 2 || G.rows < 2)
+		return;
+
+	for (i = 0; i < 6; i++) {
+		if (!*chars) {
+			cp[i] = i < 4 ? '+' : (i == 4 ? '-' : '|');
+			continue;
+		}
+		chars += utf8_next(chars, &cp[i]);
+	}
+
+	for (x = 1; x < G.cols - 1; x++) {
+		G.cells[x] = (struct cell){ cp[4], (uint8_t)style, 0 };
+		G.cells[(G.rows - 1) * G.cols + x] =
+			(struct cell){ cp[4], (uint8_t)style, 0 };
+	}
+	for (y = 1; y < G.rows - 1; y++) {
+		G.cells[y * G.cols] = (struct cell){ cp[5], (uint8_t)style, 0 };
+		G.cells[y * G.cols + G.cols - 1] =
+			(struct cell){ cp[5], (uint8_t)style, 0 };
+	}
+
+	G.cells[0] = (struct cell){ cp[0], (uint8_t)style, 0 };
+	G.cells[G.cols - 1] = (struct cell){ cp[1], (uint8_t)style, 0 };
+	G.cells[G.rows * G.cols - 1] = (struct cell){ cp[2], (uint8_t)style, 0 };
+	G.cells[(G.rows - 1) * G.cols] = (struct cell){ cp[3], (uint8_t)style, 0 };
+}
+
 void grid_text(int x, int y, const char *utf8, int style)
 {
 	uint32_t cp;
 
-	if (y < 0 || y >= G.rows)
-		return;
-
 	while (*utf8) {
+		struct cell *c;
 		int w;
 
 		utf8 += utf8_next(utf8, &cp);
@@ -180,19 +233,19 @@ void grid_text(int x, int y, const char *utf8, int style)
 
 		if (w == 0)
 			continue;              /* step 2 drops combining marks */
-		if (x >= G.cols)
+		if (x >= grid_cols())
 			return;
 
-		if (x >= 0) {
-			struct cell *c = &G.cells[y * G.cols + x];
+		c = at(x, y);
+		if (c) {
 			c->cp = cp;
 			c->style = (uint8_t)style;
 			c->cont = 0;
 
-			if (w == 2 && x + 1 < G.cols) {
-				c[1].cp = 0;
-				c[1].style = (uint8_t)style;
-				c[1].cont = 1;
+			if (w == 2 && (c = at(x + 1, y))) {
+				c->cp = 0;
+				c->style = (uint8_t)style;
+				c->cont = 1;
 			}
 		}
 		x += w;

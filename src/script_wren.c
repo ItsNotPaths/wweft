@@ -27,7 +27,10 @@ static struct {
 	WrenHandle *on_message;
 	int cols, rows;         /* what Surface.window asked for */
 	int font_done;
-	int dismiss;            /* close when the keyboard focus goes away */
+	int dismiss;
+	int border_on;
+	int border_style;
+	char border_chars[32];   /* six code points, UTF-8 */            /* close when the keyboard focus goes away */
 	size_t bytes;           /* live bytes in the Wren heap */
 	char dir[PATH_LEN];     /* the directory of the script */
 } S;
@@ -47,6 +50,7 @@ static const char *module_src =
 "  foreign static every(ms)\n"
 "  foreign static listen(spec)\n"
 "  foreign static output(name)\n"
+"  foreign static borderSet(chars, style)\n"
 "  foreign static close(code)\n"
 "  foreign static emit(text)\n"
 "  foreign static spawn(cmd)\n"
@@ -54,12 +58,14 @@ static const char *module_src =
 "  foreign static shWait(cmd, ms)\n"
 "  foreign static run(object)\n"
 "\n"
-// @api Surface.sh(cmd), Surface.sh(cmd, ms) -> [out, rc]  popen with a deadline
+// @api Surface.sh(cmd[, ms]) -> [out, rc]  popen with a deadline
+"  static border(chars) { borderSet(chars, 0) }\n"
+"  static border(chars, style) { borderSet(chars, style) }\n"
 "  static sh(cmd) { shWait(cmd, 2000) }\n"
 "  static sh(cmd, ms) { shWait(cmd, ms) }\n"
 "\n"
 "  // The output of a command, one item for each line, empty lines dropped.\n"
-// @api Surface.lines(cmd) -> list         output split, empty lines dropped
+// @api Surface.lines(cmd) -> list          output split, empty lines dropped
 "  static lines(cmd) {\n"
 "    var out = []\n"
 "    for (line in sh(cmd)[0].split(\"\\n\")) {\n"
@@ -104,7 +110,7 @@ static const char *module_src =
 "    __sel = define(0xff151515, 0xff7fbfff)\n"
 "    __dim = define(0xff707070, 0xee151515)\n"
 "  }\n"
-// @api Style.base, title, item, sel, dim  ready made style ids
+// @api Style.base, title, item, sel, dim   ready made style ids
 "  static base { __base }\n"
 "  static title { __title }\n"
 "  static item { __item }\n"
@@ -121,7 +127,7 @@ static const char *module_src =
 "\n"
 "class Text {\n"
 "  // ASCII only. Wren carries no Unicode case tables.\n"
-// @api Text.lower(s) -> str               ASCII only
+// @api Text.lower(s) -> str                ASCII only
 "  static lower(s) {\n"
 "    var out = \"\"\n"
 "    for (c in s.codePoints) {\n"
@@ -130,14 +136,14 @@ static const char *module_src =
 "    return out\n"
 "  }\n"
 "\n"
-// @api Text.contains(a, b) -> bool        case insensitive
+// @api Text.contains(a, b) -> bool         case insensitive
 "  static contains(haystack, needle) {\n"
 "    return lower(haystack).contains(lower(needle))\n"
 "  }\n"
 "\n"
 "  // Safe to put inside a shell command. An apostrophe in a file name\n"
 "  // breaks the command without this.\n"
-// @api Text.quote(s) -> str               safe inside a shell command
+// @api Text.quote(s) -> str                safe inside a shell command
 "  static quote(s) {\n"
 "    return \"'\" + s.replace(\"'\", \"'\\\\''\") + \"'\"\n"
 "  }\n"
@@ -266,6 +272,37 @@ static void f_exclusive(WrenVM *vm)
 static void f_dismiss(WrenVM *vm)
 {
 	S.dismiss = wrenGetSlotBool(vm, 1) ? 1 : 0;
+}
+
+/* A name, or six code points of your own: the four corners clockwise from
+ * the top left, then the horizontal, then the vertical. */
+static void f_border(WrenVM *vm)
+{
+	static const struct {
+		const char *name;
+		const char *chars;
+	} sets[] = {
+		{ "line",   "\u250c\u2510\u2518\u2514\u2500\u2502" },
+		{ "round",  "\u256d\u256e\u256f\u2570\u2500\u2502" },
+		{ "double", "\u2554\u2557\u255d\u255a\u2550\u2551" },
+		{ "heavy",  "\u250f\u2513\u251b\u2517\u2501\u2503" },
+		{ "ascii",  "++++-|" },
+		{ "block",  "\u2588\u2588\u2588\u2588\u2588\u2588" },
+	};
+	const char *spec = wrenGetSlotString(vm, 1);
+	size_t i;
+
+	S.border_style = (int)wrenGetSlotDouble(vm, 2);
+	S.border_on = 1;
+
+	for (i = 0; i < sizeof sets / sizeof *sets; i++) {
+		if (strcmp(spec, sets[i].name) == 0) {
+			snprintf(S.border_chars, sizeof S.border_chars, "%s",
+				 sets[i].chars);
+			return;
+		}
+	}
+	snprintf(S.border_chars, sizeof S.border_chars, "%s", spec);
 }
 
 static void f_every(WrenVM *vm)
@@ -504,6 +541,8 @@ static const struct entry methods[] = {
 	{ "Surface", "exclusive(_)",    f_exclusive },
 	// @api Surface.dismiss(flag)               close when the focus leaves. Default true
 	{ "Surface", "dismiss(_)",      f_dismiss },
+	// @api Surface.border(chars[, style])      "line" "round" "double" "heavy" "ascii" "block", or six of your own. The window grows one cell on every side
+	{ "Surface", "borderSet(_,_)",  f_border },
 	// @api Surface.every(ms)                   0 stops it. onTick() is called
 	{ "Surface", "every(_)",        f_every },
 	// @api Surface.listen(spec)                a name, or a unix socket path
@@ -525,7 +564,11 @@ static const struct entry methods[] = {
 	// @api Surface.read(path) -> str           whole file or null. A leading ~ expands
 	{ "Surface", "read(_)",         f_read },
 	{ "Surface", "shWait(_,_)",     f_sh },
-	// @api Surface.run(object)                 object needs onKey(name) and onDraw(grid)
+	// @api Surface.run(object)                 the object gets onDraw, onKey, onTick, onMessage
+	// @api onDraw(grid)                        fill the cells. Called before every frame
+	// @api onKey(name) -> bool                 false means not handled, no redraw
+	// @api onTick()                            from Surface.every
+	// @api onMessage(line)                     from Surface.listen
 	{ "Surface", "run(_)",          f_run },
 	// @api Grid.text(x, y, str, style)
 	{ "Grid",    "text(_,_,_,_)",   f_text },
@@ -730,6 +773,15 @@ int script_font_done(void)
 int script_dismiss(void)
 {
 	return S.dismiss;
+}
+
+int script_border(int *style, const char **chars)
+{
+	if (style)
+		*style = S.border_style;
+	if (chars)
+		*chars = S.border_chars;
+	return S.border_on;
 }
 
 int script_on_key(const char *name)

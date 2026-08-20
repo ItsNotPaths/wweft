@@ -27,8 +27,15 @@ void app_resize(int cols, int rows)
 
 void app_paint(void)
 {
+	int style;
+	const char *chars;
+
 	grid_clear(0);
 	script_on_draw();
+
+	/* Last, so the script cannot draw over it. */
+	if (script_border(&style, &chars))
+		grid_border(style, chars);
 }
 
 /* Focus went to another surface. A popup closes. Exit code 1, the same as
@@ -136,6 +143,18 @@ int main(int argc, char **argv)
 		font_open(NULL, env_int("WWEFT_SIZE", DEFAULT_SIZE), wl_scale());
 
 	script_window_size(&cols, &rows);
+
+	/* A border lives outside the size the script asked for: 10 by 10 with
+	 * a border is a surface of 12 by 12. An axis that fills the output
+	 * keeps its 0 and loses two cells to the border after the configure. */
+	if (script_border(NULL, NULL)) {
+		grid_set_inset(1);
+		if (cols > 0)
+			cols += 2;
+		if (rows > 0)
+			rows += 2;
+	}
+
 	if (grid_init(cols > 0 ? cols : 1, rows > 0 ? rows : 1) < 0) {
 		fprintf(stderr, "wweft: out of memory\n");
 		script_close();

@@ -7,6 +7,7 @@ var ACCENT = 0xffe06c5a
 var TITLE = Style.define(ACCENT, BG)
 var ITEM = Style.define(FG, BG)
 var SEL = Style.define(BG, ACCENT)
+var FRAME = Style.define(ACCENT, BG)
 
 class Session {
   construct new() {
@@ -43,6 +44,7 @@ class Session {
 }
 
 Surface.font("", 16)
+Surface.border("round", FRAME)   // the window grows by one cell each side
 Surface.layer("overlay")
 Surface.anchor("center")
 Surface.window(46, 5)
