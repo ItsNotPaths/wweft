@@ -23,6 +23,7 @@ var GRIP = 0.90             // the floor, once nothing is pushing
 var TOP_SPEED = 24
 var JUMP = -27
 var BOUNCE = 0.62           // how much speed an edge gives back
+var PLANT = 4               // ticks held against the edge, compressing
 
 class Box {
   construct new() {
@@ -35,6 +36,10 @@ class Box {
     _run = 0                // ticks of push still owed to a key press
     _way = 0
     _side = 0               // the wall it last hit: 1 right, -1 left
+    _plantY = 0             // ticks still stuck to the floor or ceiling
+    _plantX = 0             // ticks still stuck to a wall
+    _kickY = 0              // the speed waiting for the box to let go
+    _kickX = 0
     _face = 0
     _skin = Style.define(0xff102030, 0xfff2b134)
     _eye = Style.define(0xfff2b134, 0xff102030)
@@ -48,11 +53,16 @@ class Box {
   w { cols * Surface.cellW }
   h { rows * Surface.cellH }
 
-  onFloor { _by >= Surface.screenH - 1 }
+  onFloor { _plantY > 0 || _by >= Surface.screenH - 1 }
 
-  wobbleOn(amount) {
-    _wobble = _wobble + amount
-    _face = 8
+  // An edge is hit in the same tick the squash has to show. Setting the
+  // wobble alone puts the squash one tick late, and by then the rebound has
+  // already carried the box off the edge: fast landings would then flatten
+  // out in mid air, a long way above the floor.
+  hit(amount) {
+    _squash = (1 + amount).max(0.55).min(1.8)
+    _wobble = 0
+    _face = 10
   }
 
   // A spring that pulls the squash back to 1 and overshoots on the way.
@@ -72,6 +82,15 @@ class Box {
     var sw = Surface.screenW
     var sh = Surface.screenH
 
+    across(half, sw)
+    down(sh)
+
+    half = w / 2
+    Surface.window(cols, rows)
+    place(half, sw, sh)
+  }
+
+  across(half, sw) {
     if (_run > 0) {
       _vx = (_vx + _way * THRUST).max(-TOP_SPEED).min(TOP_SPEED)
       _run = _run - 1
@@ -79,36 +98,64 @@ class Box {
       _vx = _vx * GRIP
     }
 
-    _vy = _vy + GRAVITY
+    // Stuck to a wall: it holds still and compresses, then lets go.
+    if (_plantX > 0) {
+      _plantX = _plantX - 1
+      _cx = _side == 1 ? sw - half : half
+      if (_plantX == 0) _vx = _kickX
+      return
+    }
+
     _vx = _vx * DRAG
     _cx = _cx + _vx
-    _by = _by + _vy
 
     if (_cx - half < 0) {
       _cx = half
       _side = -1
-      _vx = -_vx * BOUNCE
-      wobbleOn(-(_vx.abs / 90).min(0.42))
     } else if (_cx + half > sw) {
       _cx = sw - half
       _side = 1
-      _vx = -_vx * BOUNCE
-      wobbleOn(-(_vx.abs / 90).min(0.42))
+    } else {
+      return
     }
+
+    if (_vx.abs > 4) {
+      hit(-(_vx.abs / 90).min(0.42))
+      _kickX = -_vx * BOUNCE
+      _plantX = PLANT
+      _vx = 0
+    } else {
+      _vx = -_vx * BOUNCE
+    }
+  }
+
+  down(sh) {
+    // Stuck to the floor: planted while the squash does its work, so the
+    // flat pose is seen against the floor and not above it.
+    if (_plantY > 0) {
+      _plantY = _plantY - 1
+      if (_plantY == 0) _vy = _kickY
+      return
+    }
+
+    _vy = _vy + GRAVITY
+    _by = _by + _vy
 
     if (_by > sh) {
       _by = sh
-      if (_vy > 3) wobbleOn((_vy / 70).min(0.55))
-      _vy = -_vy * BOUNCE
-      if (_vy.abs < 3) _vy = 0
+      if (_vy > 4) {
+        hit((_vy / 70).min(0.55))
+        _kickY = -_vy * BOUNCE
+        _plantY = PLANT
+        _vy = 0
+      } else {
+        _vy = 0
+      }
     } else if (_by - h < 0) {
       _by = h
+      if (_vy.abs > 4) hit((_vy.abs / 90).min(0.4))
       _vy = -_vy * BOUNCE
-      wobbleOn((_vy.abs / 90).min(0.4))
     }
-
-    Surface.window(cols, rows)
-    place(half, sw, sh)
   }
 
   // The bottom is always anchored. The side is whichever wall was hit last,
@@ -133,8 +180,9 @@ class Box {
 
   jump() {
     if (!onFloor) return
+    _plantY = 0
     _vy = JUMP
-    wobbleOn(-0.30)
+    hit(-0.30)
   }
 
   draw() {
