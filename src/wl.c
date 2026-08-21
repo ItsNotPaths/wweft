@@ -790,37 +790,49 @@ void wl_rescale(void)
 {
 	int cw = font_cell_w();
 	int ch = font_cell_h();
+	int want_w, want_h, px_w, px_h;
 
 	if (!W.layer || !W.configured)
 		return;
 
+	want_w = W.want_cols > 0 ? wl_to_logical(W.want_cols * cw +
+						 2 * W.outline) : 0;
+	want_h = W.want_rows > 0 ? wl_to_logical(W.want_rows * ch +
+						 2 * W.outline) : 0;
+
 	if (getenv("WWEFT_DEBUG"))
-		fprintf(stderr, "rescale: cell=%dx%d outline=%d\n",
-			cw, ch, W.outline);
+		fprintf(stderr, "rescale: cell=%dx%d want=%dx%d have=%dx%d\n",
+			cw, ch, want_w, want_h, W.logical_w, W.logical_h);
 
-	int px_w, px_h;
+	zwlr_layer_surface_v1_set_size(W.layer, (uint32_t)want_w,
+				       (uint32_t)want_h);
 
-	zwlr_layer_surface_v1_set_size(W.layer,
-		W.want_cols > 0 ? (uint32_t)wl_to_logical(W.want_cols * cw +
-						       2 * W.outline) : 0,
-		W.want_rows > 0 ? (uint32_t)wl_to_logical(W.want_rows * ch +
-						       2 * W.outline) : 0);
+	/* A size the compositor has not agreed to yet. It answers with a
+	 * configure, and the buffers are made there. Drawing now would put
+	 * the new pixels behind a viewport still cut for the old size, and
+	 * the frame arrives stretched. */
+	if ((want_w && want_w != W.logical_w) ||
+	    (want_h && want_h != W.logical_h)) {
+		wl_surface_commit(W.surface);
+		return;
+	}
 
 	buffer_size(W.logical_w, W.logical_h, &px_w, &px_h);
 
 	/* A move, or a resize the cells absorbed, keeps the buffers it has.
 	 * Rebuilding them every frame is a memfd and an mmap every frame. */
 	if (px_w != W.width || px_h != W.height) {
+		int c, r;
+
 		W.width = px_w;
 		W.height = px_h;
 		if (make_buffers() < 0) {
 			loop_quit(1);
 			return;
 		}
-		app_resize((W.width - 2 * W.outline) / cw > 0
-				? (W.width - 2 * W.outline) / cw : 1,
-			   (W.height - 2 * W.outline) / ch > 0
-				? (W.height - 2 * W.outline) / ch : 1);
+		c = (W.width - 2 * W.outline) / cw;
+		r = (W.height - 2 * W.outline) / ch;
+		app_resize(c > 0 ? c : 1, r > 0 ? r : 1);
 	}
 
 	if (W.viewport)
