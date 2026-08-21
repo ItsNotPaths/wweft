@@ -50,6 +50,7 @@ static struct {
 	uint32_t anchor;
 	int margin[4];    /* cells: top, right, bottom, left */
 	int exclusive;    /* cells. -1 = ignore other surfaces */
+	int keyboard;     /* -1 follows exclusive, else 0 or 1 */
 	int width;        /* buffer, in device pixels */
 	int height;
 	int logical_w;    /* what the compositor last asked for */
@@ -136,6 +137,18 @@ static struct wl_output *chosen_output(void)
 void wl_set_exclusive(int cells)
 {
 	W.exclusive = cells;
+}
+
+/* -1 keeps the old rule: a popup takes the keyboard, a surface that
+ * reserves space does not. */
+void wl_set_keyboard(int on)
+{
+	W.keyboard = on;
+}
+
+static int keyboard_on(void)
+{
+	return W.keyboard >= 0 ? W.keyboard : (W.exclusive < 0 ? 1 : 0);
 }
 
 /* The globals, never the viewport object: the viewport is made in wl_open
@@ -539,6 +552,7 @@ int wl_connect(void)
 {
 	W.scale = 1;
 	W.exclusive = -1;
+	W.keyboard = -1;
 	W.layer_id = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
 
 	W.display = wl_display_connect(NULL);
@@ -620,9 +634,8 @@ int wl_open(int cols, int rows)
 					       : W.exclusive * ch);
 	zwlr_layer_surface_v1_set_exclusive_zone(W.layer, zone);
 
-	/* A popup takes the keyboard. A bar that reserves space does not. */
 	zwlr_layer_surface_v1_set_keyboard_interactivity(W.layer,
-							 W.exclusive < 0 ? 1 : 0);
+							 (uint32_t)keyboard_on());
 	/* With a viewport the buffer scale stays 1. */
 	if (!fractional())
 		wl_surface_set_buffer_scale(W.surface, W.scale);

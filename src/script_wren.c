@@ -53,6 +53,7 @@ static const char *module_src =
 "  foreign static layer(name)\n"
 "  foreign static scale(n)\n"
 "  foreign static exclusive(cells)\n"
+"  foreign static keyboard(flag)\n"
 "  foreign static dismiss(flag)\n"
 "  foreign static every(ms)\n"
 "  foreign static lifetime(ms)\n"
@@ -269,6 +270,11 @@ static void f_scale(WrenVM *vm)
 static void f_exclusive(WrenVM *vm)
 {
 	wl_set_exclusive((int)wrenGetSlotDouble(vm, 1));
+}
+
+static void f_keyboard(WrenVM *vm)
+{
+	wl_set_keyboard(wrenGetSlotBool(vm, 1) ? 1 : 0);
 }
 
 static void f_dismiss(WrenVM *vm)
@@ -574,6 +580,8 @@ static const struct entry methods[] = {
 	{ "Surface", "scale(_)",        f_scale },
 	// @api Surface.exclusive(cells)            -1 popup, 0 none, n reserves n rows
 	{ "Surface", "exclusive(_)",    f_exclusive },
+	// @api Surface.keyboard(flag)              take the keyboard. Default: on unless exclusive reserves space
+	{ "Surface", "keyboard(_)",     f_keyboard },
 	// @api Surface.dismiss(flag)               close when the focus leaves. Default true
 	{ "Surface", "dismiss(_)",      f_dismiss },
 	// @api Surface.border(chars[, style])      "line" "round" "double" "heavy" "ascii" "block", or six of your own. The window grows one cell on every side
