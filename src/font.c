@@ -260,4 +260,3 @@ const struct glyph *font_glyph(uint32_t cp)
 int font_cell_w(void)    { return F.cell_w; }
 int font_cell_h(void)    { return F.cell_h; }
 int font_baseline(void)  { return F.baseline; }
-const char *font_source(void) { return F.source; }

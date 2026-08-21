@@ -5,6 +5,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
+/* ------------------------------------------------------------------ util */
+
+void expand_home(const char *in, char *out, size_t size);   /* ~ to $HOME */
+
 /* ------------------------------------------------------------------ font */
 
 struct glyph {
@@ -19,7 +23,6 @@ const struct glyph *font_glyph(uint32_t cp);
 int  font_cell_w(void);
 int  font_cell_h(void);
 int  font_baseline(void);
-const char *font_source(void);              /* the path, or "spleen 8x16" */
 
 /* ------------------------------------------------------------------ grid */
 
@@ -34,7 +37,6 @@ struct cell {
 int  grid_init(int cols, int rows);
 void grid_free(void);
 void grid_reset_styles(void);
-void grid_set_style(int id, uint32_t fg, uint32_t bg);   /* 0xAARRGGBB */
 int  grid_add_style(uint32_t fg, uint32_t bg);           /* new id, or -1 */
 void grid_clear(int style);
 void grid_text(int x, int y, const char *utf8, int style);
@@ -48,7 +50,6 @@ int  grid_full_rows(void);
 /* A border of one cell on every side. The script keeps counting from 0, so
  * nothing in its layout moves. */
 void grid_set_inset(int on);
-int  grid_inset(void);
 void grid_border(int style, const char *chars);   /* TL TR BR BL H V */
 const struct cell *grid_cell(int x, int y);
 void grid_style_colors(int id, uint32_t *fg, uint32_t *bg);
@@ -87,7 +88,6 @@ void wl_set_scale(int n);                   /* 0 = follow the output */
 void wl_set_output(const char *name);       /* "" = the compositor chooses */
 void wl_set_outline(int device_px);         /* grows the surface, not the cells */
 int  wl_connect(void);                      /* bind the globals */
-int  wl_scale(void);                        /* whole number output scale */
 int  wl_scale120(void);                     /* device pixels per 120 logical */
 int  wl_align(void);                        /* cell must divide by this */
 void wl_rescale(void);                       /* after the font was reopened */

@@ -47,8 +47,6 @@ void app_paint(void)
 	/* Last, so the script cannot draw over it. */
 	if (script_border(&style, &chars))
 		grid_border(style, chars);
-
-
 }
 
 /* Code 1, the same as Escape: nothing was chosen. */
@@ -159,7 +157,6 @@ int main(int argc, char **argv)
 		       "  WWEFT_SIZE   cell height in pixels, default 16\n"
 		       "  WWEFT_DEBUG  write key names to stderr\n"
 		       "  WWEFT_DUMP   write each frame to a file, as a PAM image\n"
-		       "\n"
 		       "\n"
 		       "  --send <channel> <text>   one line to a running wweft\n"
 		       "  --version, --license, --help\n",

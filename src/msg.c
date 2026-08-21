@@ -157,19 +157,7 @@ void msg_stop(void)
 	watches = 0;
 }
 
-/* `wweft --send NAME TEXT`. It never blocks and never waits: a FIFO with no
- * reader gives ENXIO at once, instead of hanging the compositor bind. */
 /* ------------------------------------------------------------- watches */
-
-static void expand_home(const char *in, char *out, size_t size)
-{
-	const char *home = getenv("HOME");
-
-	if (in[0] == '~' && in[1] == '/' && home)
-		snprintf(out, size, "%s%s", home, in + 1);
-	else
-		snprintf(out, size, "%s", in);
-}
 
 int msg_watch(const char *path)
 {
@@ -253,6 +241,8 @@ void msg_watch_read(void)
 	}
 }
 
+/* `wweft --send NAME TEXT`. It never blocks and never waits: a FIFO with no
+ * reader gives ENXIO at once, instead of hanging the compositor bind. */
 int msg_send(const char *name, const char *text)
 {
 	char path[LINE_MAX];

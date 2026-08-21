@@ -30,14 +30,14 @@ static struct {
 	int font_done;
 	char font_path[PATH_LEN];
 	int font_px;
-	int dismiss;
+	int dismiss;            /* close when the keyboard focus goes away */
 	int border_on;
 	int border_style;
 	char border_chars[32];   /* six code points, UTF-8 */
 	int outline_px;          /* logical pixels. 0 is off */
 	int outline_style;
 	int argc;                /* what came after the script path */
-	char **argv;            /* close when the keyboard focus goes away */
+	char **argv;
 	size_t bytes;           /* live bytes in the Wren heap */
 	char dir[PATH_LEN];     /* the directory of the script */
 } S;
@@ -73,7 +73,7 @@ static const char *module_src =
 "  static outline(px, style) { outlineSet(px, style) }\n"
 "  static border(chars) { borderSet(chars, 0) }\n"
 "  static border(chars, style) { borderSet(chars, style) }\n"
-"  static sh(cmd) { shWait(cmd, 2000) }\n"
+"  static sh(cmd) { shWait(cmd, 0) }\n"
 "  static sh(cmd, ms) { shWait(cmd, ms) }\n"
 "\n"
 "  // The output of a command, one item for each line, empty lines dropped.\n"
@@ -180,17 +180,6 @@ static const char *module_src =
 "}\n";
 
 /* ------------------------------------------------------------- utilities */
-
-/* Put ~ back to the home directory. The result is in out. */
-static void expand_home(const char *in, char *out, size_t size)
-{
-	const char *home = getenv("HOME");
-
-	if (in[0] == '~' && in[1] == '/' && home)
-		snprintf(out, size, "%s%s", home, in + 1);
-	else
-		snprintf(out, size, "%s", in);
-}
 
 /* Read every byte. A pipe and a /proc file have no size, so this grows the
  * buffer instead of asking how long the file is. */
@@ -552,6 +541,10 @@ static void f_define(WrenVM *vm)
 	uint32_t fg = (uint32_t)wrenGetSlotDouble(vm, 1);
 	uint32_t bg = (uint32_t)wrenGetSlotDouble(vm, 2);
 	int id = grid_add_style(fg, bg);
+
+	if (id < 0)
+		fprintf(stderr, "wweft: no style slots left, %d is the limit\n",
+			GRID_STYLES);
 
 	wrenSetSlotDouble(vm, 0, id < 0 ? 0 : id);
 }

@@ -563,11 +563,6 @@ int wl_connect(void)
 	return 0;
 }
 
-int wl_scale(void)
-{
-	return W.scale;
-}
-
 int wl_open(int cols, int rows)
 {
 	uint32_t anchor = W.anchor;

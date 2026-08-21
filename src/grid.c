@@ -110,14 +110,6 @@ void grid_free(void)
 	memset(&G, 0, sizeof G);
 }
 
-void grid_set_style(int id, uint32_t fg, uint32_t bg)
-{
-	if (id < 0 || id >= GRID_STYLES)
-		return;
-	S.fg[id] = fg;
-	S.bg[id] = bg;
-}
-
 void grid_style_colors(int id, uint32_t *fg, uint32_t *bg)
 {
 	if (id < 0 || id >= GRID_STYLES)
@@ -134,11 +126,6 @@ int grid_full_rows(void) { return G.rows; }
 void grid_set_inset(int on)
 {
 	G.inset = on ? 1 : 0;
-}
-
-int grid_inset(void)
-{
-	return G.inset;
 }
 
 const struct cell *grid_cell(int x, int y)
