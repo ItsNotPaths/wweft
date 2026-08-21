@@ -110,16 +110,17 @@ static void open_font(void)
  * filled axis keeps its 0 and loses two cells at the configure. */
 static void window_size(int *cols, int *rows)
 {
+	int border = script_border(NULL, NULL);
+
 	script_window_size(cols, rows);
+	grid_set_inset(border);
 
-	grid_set_inset(script_border(NULL, NULL) ? 1 : 0);
-	if (!script_border(NULL, NULL))
-		return;
-
-	if (*cols > 0)
-		*cols += 2;
-	if (*rows > 0)
-		*rows += 2;
+	if (border) {
+		if (*cols > 0)
+			*cols += 2;
+		if (*rows > 0)
+			*rows += 2;
+	}
 }
 
 /* ------------------------------------------------- changes from the script */
@@ -151,23 +152,30 @@ int app_pending(void)
 
 void app_flush(void)
 {
+	int geometry = dirty & DIRTY_GEOMETRY;
+	int attrs = dirty & DIRTY_ATTRS;
 	int cols, rows;
 
 	if (!dirty)
 		return;
 
-	if (dirty & DIRTY_ATTRS)
+	/* Cleared first: the frame below runs onDraw, and the script may ask
+	 * for another change from inside it. That one waits for the next
+	 * pass instead of turning this into a loop. */
+	dirty = 0;
+
+	if (attrs)
 		wl_apply();
 
-	if (dirty & DIRTY_GEOMETRY) {
-		apply_outline();
-		window_size(&cols, &rows);
-		wl_resize(cols, rows);
-		wl_rescale();       /* the cell may have changed size too */
+	if (!geometry) {
+		wl_redraw();
+		return;
 	}
 
-	dirty = 0;
-	wl_redraw();
+	apply_outline();
+	window_size(&cols, &rows);
+	wl_resize(cols, rows);
+	wl_rescale();      /* new buffers, and the frame */
 }
 
 /* The script set the font, or the scale that sizes it. The metrics are
