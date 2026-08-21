@@ -92,6 +92,9 @@ void wl_set_anchor(const char *spec)
 		W.anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
 }
 
+/* Logical pixels, the unit the compositor places things in. A gap is a pixel
+ * count and is rarely a whole number of cells. Times Surface.cellW or cellH
+ * for a distance counted in glyphs. */
 void wl_set_margin(int top, int right, int bottom, int left)
 {
 	W.margin[0] = top;
