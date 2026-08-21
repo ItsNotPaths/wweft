@@ -50,6 +50,7 @@ static const char *module_src =
 "  foreign static window(cols, rows)\n"
 "  foreign static anchor(spec)\n"
 "  foreign static margin(t, r, b, l)\n"
+"  foreign static marginPx(t, r, b, l)\n"
 "  foreign static layer(name)\n"
 "  foreign static scale(n)\n"
 "  foreign static exclusive(cells)\n"
@@ -259,6 +260,12 @@ static void f_window(WrenVM *vm)
 static void f_anchor(WrenVM *vm)
 {
 	wl_set_anchor(wrenGetSlotString(vm, 1));
+}
+
+static void f_margin_px(WrenVM *vm)
+{
+	wl_set_margin_px((int)wrenGetSlotDouble(vm, 1), (int)wrenGetSlotDouble(vm, 2),
+			 (int)wrenGetSlotDouble(vm, 3), (int)wrenGetSlotDouble(vm, 4));
 }
 
 static void f_margin(WrenVM *vm)
@@ -575,6 +582,8 @@ static const struct entry methods[] = {
 	{ "Surface", "anchor(_)",       f_anchor },
 	// @api Surface.margin(t, r, b, l)          cells
 	{ "Surface", "margin(_,_,_,_)", f_margin },
+	// @api Surface.marginPx(t, r, b, l)        logical pixels
+	{ "Surface", "marginPx(_,_,_,_)", f_margin_px },
 	// @api Surface.layer(name)                 "overlay", "top", "bottom", "background"
 	{ "Surface", "layer(_)",        f_layer },
 	// @api Surface.scale(n)                    0 follows the output
