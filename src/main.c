@@ -154,6 +154,7 @@ void app_flush(void)
 {
 	int geometry = dirty & DIRTY_GEOMETRY;
 	int attrs = dirty & DIRTY_ATTRS;
+	int waiting = 0;
 	int cols, rows;
 
 	if (!dirty)
@@ -164,18 +165,20 @@ void app_flush(void)
 	 * pass instead of turning this into a loop. */
 	dirty = 0;
 
+	/* The size is asked for first, so the move below knows to wait for
+	 * the frame that carries it. */
+	if (geometry) {
+		apply_outline();
+		window_size(&cols, &rows);
+		wl_resize(cols, rows);
+		waiting = wl_rescale();
+	}
+
 	if (attrs)
 		wl_apply();
 
-	if (!geometry) {
+	if (!waiting)
 		wl_redraw();
-		return;
-	}
-
-	apply_outline();
-	window_size(&cols, &rows);
-	wl_resize(cols, rows);
-	wl_rescale();      /* new buffers, and the frame */
 }
 
 /* The script set the font, or the scale that sizes it. The metrics are
@@ -213,7 +216,8 @@ void app_rescale(void)
 
 	open_font();
 	apply_outline();
-	wl_rescale();
+	if (!wl_rescale())
+		wl_redraw();
 }
 
 void app_on_change(const char *path)

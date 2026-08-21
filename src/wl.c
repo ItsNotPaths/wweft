@@ -218,6 +218,11 @@ static void fail(const char *what)
 static bool redraw_pending;
 
 static void draw(void);
+static void send_attrs(void);
+
+/* set_size has gone out and the configure has not come back with it. */
+static bool resize_wait;
+static bool attrs_wait;
 
 static void on_release(void *data, struct wl_buffer *wl)
 {
@@ -369,6 +374,7 @@ static void on_configure(void *data, struct zwlr_layer_surface_v1 *ls,
 			width, height, W.scale120);
 
 	zwlr_layer_surface_v1_ack_configure(ls, serial);
+	resize_wait = false;
 
 	/* The event carries logical pixels. The buffer holds device pixels. */
 	W.logical_w = (int)width;
@@ -404,6 +410,12 @@ static void on_configure(void *data, struct zwlr_layer_surface_v1 *ls,
 	/* The scale event follows the first configure, so hold frame one. */
 	if (fractional() && !W.got_scale)
 		return;
+
+	/* The move and the new size go on screen together, in this frame. */
+	if (attrs_wait) {
+		send_attrs();
+		attrs_wait = false;
+	}
 
 	draw();
 	W.drawn = true;
@@ -681,9 +693,7 @@ static uint32_t full_anchor(void)
 	return anchor;
 }
 
-/* Everything the compositor keeps for us that is not the buffer. It is all
- * double buffered, so one commit shows the lot. */
-void wl_apply(void)
+static void send_attrs(void)
 {
 	int ch = fractional() ? font_cell_h() : font_cell_h() / W.scale;
 	int zone;
@@ -705,6 +715,22 @@ void wl_apply(void)
 	if (zwlr_layer_surface_v1_get_version(W.layer) >=
 	    ZWLR_LAYER_SURFACE_V1_SET_LAYER_SINCE_VERSION)
 		zwlr_layer_surface_v1_set_layer(W.layer, W.layer_id);
+}
+
+/* Everything the compositor keeps for us that is not the buffer. It is all
+ * double buffered, so one commit shows the lot.
+ *
+ * A resize on its way holds it back. The commit that asks for a new size
+ * carries no buffer, so a margin riding along would move the surface now and
+ * leave the pixels to catch up a round trip later. Anything moving fast then
+ * paints where it was, not where it is. */
+void wl_apply(void)
+{
+	if (resize_wait) {
+		attrs_wait = true;
+		return;
+	}
+	send_attrs();
 }
 
 /* Glyph space. The anchor goes with it, because a 0 axis stretches. The
@@ -786,14 +812,14 @@ int wl_open(int cols, int rows)
 
 /* After the font was reopened. It rebuilds at once, because a logical size
  * that did not change brings no configure. */
-void wl_rescale(void)
+int wl_rescale(void)
 {
 	int cw = font_cell_w();
 	int ch = font_cell_h();
 	int want_w, want_h, px_w, px_h;
 
 	if (!W.layer || !W.configured)
-		return;
+		return 0;
 
 	want_w = W.want_cols > 0 ? wl_to_logical(W.want_cols * cw +
 						 2 * W.outline) : 0;
@@ -813,8 +839,9 @@ void wl_rescale(void)
 	 * the frame arrives stretched. */
 	if ((want_w && want_w != W.logical_w) ||
 	    (want_h && want_h != W.logical_h)) {
+		resize_wait = true;
 		wl_surface_commit(W.surface);
-		return;
+		return 1;
 	}
 
 	buffer_size(W.logical_w, W.logical_h, &px_w, &px_h);
@@ -828,7 +855,7 @@ void wl_rescale(void)
 		W.height = px_h;
 		if (make_buffers() < 0) {
 			loop_quit(1);
-			return;
+			return 0;
 		}
 		c = (W.width - 2 * W.outline) / cw;
 		r = (W.height - 2 * W.outline) / ch;
@@ -838,8 +865,7 @@ void wl_rescale(void)
 	if (W.viewport)
 		wp_viewport_set_destination(W.viewport, W.logical_w, W.logical_h);
 
-	draw();
-	W.drawn = true;
+	return 0;
 }
 
 void wl_stop(void)

@@ -99,7 +99,7 @@ int  wl_align(void);                        /* cell must divide by this */
 int  wl_to_logical(int device);             /* device pixels to logical */
 void wl_logical_size(int *w, int *h);       /* the surface, in logical px */
 void wl_screen_size(int *w, int *h);        /* the output it is on, logical px */
-void wl_rescale(void);                       /* after the font was reopened */
+int  wl_rescale(void);       /* 1 = a configure is bringing the frame */
 int  wl_open(int cols, int rows);           /* 0 on an axis = fill */
 void wl_apply(void);                        /* margin, anchor, zone, layer */
 void wl_resize(int cols, int rows);         /* cells. 0 on an axis = fill */
