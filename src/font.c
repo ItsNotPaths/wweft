@@ -138,6 +138,24 @@ static void open_fallback(int px)
 	snprintf(F.source, sizeof F.source, "spleen 8x16 x%d", F.scale_up);
 }
 
+/* fc-match costs a fork. It outlives font_close, so a live size change or a
+ * move between monitors reopens the same file without asking again. */
+static char fc_path[512];
+static int fc_asked;
+
+static const char *fc_match(void)
+{
+	const char *found;
+
+	if (!fc_asked) {
+		fc_asked = 1;
+		found = read_line_cmd("fc-match -f '%{file}' monospace 2>/dev/null");
+		if (found)
+			snprintf(fc_path, sizeof fc_path, "%s", found);
+	}
+	return fc_path[0] ? fc_path : NULL;
+}
+
 /* px is logical. scale120 is device pixels per 120 logical, so 150 is 1.25.
  * align is 1 under a viewport, else the whole number buffer scale. */
 int font_open(const char *path, int px, int scale120, int align)
@@ -149,9 +167,8 @@ int font_open(const char *path, int px, int scale120, int align)
 	if (scale120 < 1)
 		scale120 = 120;
 	F.scale_dev = align > 0 ? align : 1;
+	px = px < FONT_PX_MIN ? FONT_PX_MIN : (px > FONT_PX_MAX ? FONT_PX_MAX : px);
 	px = (px * scale120 + 60) / 120;   /* logical to device pixels */
-	if (px < 1)
-		px = 1;
 
 	if (path && *path && open_ttf(path, px) == 0)
 		return 0;
@@ -160,8 +177,8 @@ int font_open(const char *path, int px, int scale120, int align)
 	if (env && *env && open_ttf(env, px) == 0)
 		return 0;
 
-	env = read_line_cmd("fc-match -f '%{file}' monospace 2>/dev/null");
-	if (env && *env && open_ttf(env, px) == 0)
+	env = fc_match();
+	if (env && open_ttf(env, px) == 0)
 		return 0;
 
 	open_fallback(px);

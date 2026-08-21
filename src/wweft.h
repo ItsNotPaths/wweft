@@ -17,6 +17,11 @@ struct glyph {
 	int left, top;                /* from the pen on the baseline */
 };
 
+/* Logical pixels. A live size change cannot ask for a buffer the size of a
+ * wall, or for a cell too small to hold a glyph. */
+#define FONT_PX_MIN 4
+#define FONT_PX_MAX 256
+
 int  font_open(const char *path, int px, int scale120, int align);
 void font_close(void);
 const struct glyph *font_glyph(uint32_t cp);

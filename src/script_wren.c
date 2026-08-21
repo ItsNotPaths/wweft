@@ -235,7 +235,7 @@ static void f_font(WrenVM *vm)
 	int size = (int)wrenGetSlotDouble(vm, 2);
 
 	snprintf(S.font_path, sizeof S.font_path, "%s", path ? path : "");
-	S.font_px = size > 0 ? size : 16;
+	S.font_px = size > 0 ? size : 16;   /* font.c clamps the range */
 	S.font_done = 1;
 }
 
