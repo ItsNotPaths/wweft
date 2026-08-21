@@ -36,13 +36,28 @@ The choice goes to stdout. Exit code 0 means chosen, 1 means cancelled.
 
 ## API
 
-Tagged in source:
+Tagged in source, in reading order:
 
 ```sh
-grep -o '@api.*' src/script_wren.c | sort
+grep -o '@api.*' src/script_wren.c
 ```
 
 Key names come from xkbcommon: `a`, `A`, `Left`, `Ctrl+Left`, `Escape`.
+
+The surface is placed in the compositor's own pixels. Glyph space is a
+multiplication away:
+
+```wren
+Surface.font("", 20)                            // one number sets the cell
+Surface.margin(3 * Surface.cellH, 0, 0, 0)      // three rows down
+Surface.window(40, 6)                           // the window is glyph space
+```
+
+Every `Surface` call also works after the first frame. Change the size, the
+position, the font or the border from `onKey` or `onTick`, and wweft applies
+the lot in one commit before the next frame. A font change keeps the window
+at the same number of cells, so the surface grows and the layout does not
+move.
 
 `import "theme" for Theme` searches the script directory, then
 `$XDG_CONFIG_HOME/wweft`, then `~/.config/wweft`. Config is Wren.

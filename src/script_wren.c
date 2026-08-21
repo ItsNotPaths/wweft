@@ -635,13 +635,14 @@ struct entry {
 /* CAUTION: a signature that does not match exactly fails at bind time, and
  * the error does not say which one. */
 static const struct entry methods[] = {
-	// @api Surface.font(path, px)              "" searches $WWEFT_FONT, fc-match, built-in
+	// @api ---- the surface. Every one of these works while it runs, except output ----
+	// @api Surface.font(path, px)              "" searches $WWEFT_FONT, fc-match, built-in. Sets the cell size
 	{ "Surface", "font(_,_)",       f_font },
-	// @api Surface.window(cols, rows)          0 on an axis fills the output
+	// @api Surface.window(cols, rows)          glyph space. 0 on an axis fills the output
 	{ "Surface", "window(_,_)",     f_window },
 	// @api Surface.anchor(spec)                "center", "top", "bottom-left", ...
 	{ "Surface", "anchor(_)",       f_anchor },
-	// @api Surface.margin(t, r, b, l)          cells
+	// @api Surface.margin(t, r, b, l)          logical pixels. Times Surface.cellW or cellH for glyph space
 	{ "Surface", "margin(_,_,_,_)", f_margin },
 	// @api Surface.layer(name)                 "overlay", "top", "bottom", "background"
 	{ "Surface", "layer(_)",        f_layer },
@@ -691,7 +692,7 @@ static const struct entry methods[] = {
 	// @api onMessage(line)                     from Surface.listen
 	// @api onChange(path)                      from Surface.watch
 	{ "Surface", "run(_)",          f_run },
-	// @api ---- what is true now. Read any time ----
+	// @api ---- what is true now. Read it any time ----
 	// @api Surface.cellW, Surface.cellH        one cell, in logical pixels
 	{ "Surface", "cellW",           f_cell_w },
 	{ "Surface", "cellH",           f_cell_h },
@@ -708,7 +709,7 @@ static const struct entry methods[] = {
 	{ "Grid",    "fill(_,_,_,_,_)", f_fill },
 	// @api Grid.width(str) -> columns          display columns, not code points
 	{ "Grid",    "width(_)",        f_width },
-	// @api Grid.cols, Grid.rows                the size the compositor gave
+	// @api Grid.cols, Grid.rows                the cells the script may write, inside any border
 	{ "Grid",    "cols",            f_cols },
 	{ "Grid",    "rows",            f_rows },
 	// @api Key.text -> str                     what the key typed, "" for Escape

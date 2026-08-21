@@ -260,6 +260,7 @@ int main(int argc, char **argv)
 		       "  WWEFT_SIZE   cell height in pixels, default 16\n"
 		       "  WWEFT_DEBUG  write key names to stderr\n"
 		       "  WWEFT_DUMP   write each frame to a file, as a PAM image\n"
+		       "  WWEFT_NO_FRACTIONAL  ignore fractional scale, round the scale up\n"
 		       "\n"
 		       "  --send <channel> <text>   one line to a running wweft\n"
 		       "  --version, --license, --help\n",
