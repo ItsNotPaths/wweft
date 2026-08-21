@@ -83,7 +83,11 @@ static void apply_outline(void)
 	render_set_outline(device, style);
 }
 
-/* One place opens the font, because the scale can change while running. */
+/* One place opens the font, because the size and the scale both change
+ * while running. */
+static int font_px;      /* logical, after the script and the environment */
+static int font_ready;
+
 static void open_font(void)
 {
 	const char *path = NULL;
@@ -92,7 +96,37 @@ static void open_font(void)
 	if (script_font_done())
 		script_font(&path, &px);
 
+	if (font_ready)
+		font_close();
+
 	font_open(path, px, wl_scale120(), wl_align());
+	font_px = px;
+	font_ready = 1;
+}
+
+/* The script set the font, or the scale that sizes it. */
+void app_font(void)
+{
+	open_font();
+	apply_outline();
+}
+
+/* The cell, in logical pixels. A script asks for it to lay out in pixel
+ * space, so it opens the font if nothing else has yet. */
+void app_cell(int *w, int *h)
+{
+	if (!font_ready)
+		open_font();
+
+	*w = wl_to_logical(font_cell_w());
+	*h = wl_to_logical(font_cell_h());
+}
+
+int app_font_px(void)
+{
+	if (!font_ready)
+		open_font();
+	return font_px;
 }
 
 void app_rescale(void)
@@ -100,7 +134,6 @@ void app_rescale(void)
 	if (getenv("WWEFT_DEBUG"))
 		fprintf(stderr, "rescale: scale120=%d\n", wl_scale120());
 
-	font_close();
 	open_font();
 	apply_outline();
 	wl_rescale();
@@ -179,7 +212,8 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	open_font();
+	if (!font_ready)
+		open_font();
 	apply_outline();
 
 	script_window_size(&cols, &rows);

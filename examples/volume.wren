@@ -93,6 +93,6 @@ class Volume {
 Surface.font("", 16)
 Surface.layer("overlay")
 Surface.anchor("bottom")
-Surface.margin(0, 0, 4, 0)
+Surface.margin(0, 0, 4 * Surface.cellH, 0)
 Surface.window(WIDTH + 4, 5)
 Surface.run(Volume.new())

@@ -1,8 +1,8 @@
 // A bar. Workspaces on the left, a clock in the middle, nothing else.
 //
-// It never takes the keyboard: the exclusive zone is not -1, so wweft asks
-// for no keyboard at all. Everything it knows arrives on the Hyprland event
-// socket, and the clock comes from the timer.
+// It never takes the keyboard: a surface that reserves space asks for none
+// unless Surface.keyboard says otherwise. Everything it knows arrives on the
+// Hyprland event socket, and the clock comes from the timer.
 //
 //   exec-once = wweft ~/.config/wweft/bar.wren
 
@@ -58,7 +58,7 @@ class Bar {
 Surface.font("", 16)
 Surface.layer("top")
 Surface.anchor("top")
-Surface.exclusive(1)      // reserve one row, and take no keyboard
+Surface.exclusive(1)      // reserve one row. No keyboard, by default
 Surface.every(1000)       // onTick, on the second boundary
 Surface.listen(Hypr.socket)
 Surface.window(0, 1)

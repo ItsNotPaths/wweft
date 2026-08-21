@@ -97,6 +97,6 @@ class Menu {
 Surface.font("", 16)
 Surface.outline(6, PROMPT)      // pixels outside the cells, not over them
 Surface.anchor("top")
-Surface.margin(6, 0, 0, 0)
+Surface.margin(6 * Surface.cellH, 0, 0, 0)
 Surface.window(COLS, ROWS + 1)
 Surface.run(Menu.new())

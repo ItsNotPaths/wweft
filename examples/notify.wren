@@ -46,10 +46,11 @@ class Notification {
 Surface.font("", 16)
 Surface.layer("overlay")
 Surface.anchor("top-right")
-Surface.margin(SLOT * (HEIGHT + 1) + 1, 1, 0, 0)
-// A notification must never take the keyboard. Without this it is a popup:
-// it would steal focus, and the one before it would dismiss itself.
-Surface.exclusive(0)
+Surface.margin((SLOT * (HEIGHT + 1) + 1) * Surface.cellH, Surface.cellW, 0, 0)
+// A notification must never take the keyboard: it would steal focus, and the
+// one before it would dismiss itself.
+Surface.keyboard(false)
+Surface.exclusive(0)      // sit under a bar, do not reserve anything
 Surface.border("round", FRAME)
 Surface.window(COLS, ROWS)
 Surface.lifetime(CRITICAL ? 15000 : 5000)

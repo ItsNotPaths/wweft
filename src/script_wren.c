@@ -68,6 +68,12 @@ static const char *module_src =
 "  foreign static read(path)\n"
 "  foreign static shWait(cmd, ms)\n"
 "  foreign static run(object)\n"
+"  foreign static cellW\n"
+"  foreign static cellH\n"
+"  foreign static width\n"
+"  foreign static height\n"
+"  foreign static scale\n"
+"  foreign static size\n"
 "\n"
 // @api Surface.sh(cmd[, ms]) -> [out, rc]  popen with a deadline
 "  static outline(px) { outlineSet(px, 0) }\n"
@@ -229,7 +235,8 @@ static char *read_whole(const char *path, size_t *len)
 
 /* ------------------------------------------------------- foreign methods */
 
-/* Records only. main.c opens the font, and reopens it on a scale change. */
+/* main.c opens the font here and now, so that Surface.cellW answers with
+ * this font and not the one before it. */
 static void f_font(WrenVM *vm)
 {
 	const char *path = wrenGetSlotString(vm, 1);
@@ -238,6 +245,7 @@ static void f_font(WrenVM *vm)
 	snprintf(S.font_path, sizeof S.font_path, "%s", path ? path : "");
 	S.font_px = size > 0 ? size : 16;   /* font.c clamps the range */
 	S.font_done = 1;
+	app_font();
 }
 
 static void f_window(WrenVM *vm)
@@ -262,9 +270,11 @@ static void f_layer(WrenVM *vm)
 	wl_set_layer(wrenGetSlotString(vm, 1));
 }
 
+/* The scale sizes the cell, so a font already open is now the wrong size. */
 static void f_scale(WrenVM *vm)
 {
 	wl_set_scale((int)wrenGetSlotDouble(vm, 1));
+	app_font();
 }
 
 static void f_exclusive(WrenVM *vm)
@@ -502,6 +512,50 @@ static void f_sh(WrenVM *vm)
 	free(out);
 }
 
+/* ------------------------------------------------------- what is true now */
+
+static void f_cell_w(WrenVM *vm)
+{
+	int w, h;
+
+	app_cell(&w, &h);
+	wrenSetSlotDouble(vm, 0, w);
+}
+
+static void f_cell_h(WrenVM *vm)
+{
+	int w, h;
+
+	app_cell(&w, &h);
+	wrenSetSlotDouble(vm, 0, h);
+}
+
+static void f_surface_w(WrenVM *vm)
+{
+	int w, h;
+
+	wl_logical_size(&w, &h);
+	wrenSetSlotDouble(vm, 0, w);
+}
+
+static void f_surface_h(WrenVM *vm)
+{
+	int w, h;
+
+	wl_logical_size(&w, &h);
+	wrenSetSlotDouble(vm, 0, h);
+}
+
+static void f_surface_scale(WrenVM *vm)
+{
+	wrenSetSlotDouble(vm, 0, (double)wl_scale120() / 120.0);
+}
+
+static void f_font_px(WrenVM *vm)
+{
+	wrenSetSlotDouble(vm, 0, app_font_px());
+}
+
 static void f_run(WrenVM *vm)
 {
 	if (S.app)
@@ -622,6 +676,17 @@ static const struct entry methods[] = {
 	// @api onMessage(line)                     from Surface.listen
 	// @api onChange(path)                      from Surface.watch
 	{ "Surface", "run(_)",          f_run },
+	// @api ---- what is true now. Read any time ----
+	// @api Surface.cellW, Surface.cellH        one cell, in logical pixels
+	{ "Surface", "cellW",           f_cell_w },
+	{ "Surface", "cellH",           f_cell_h },
+	// @api Surface.width, Surface.height       the surface, in logical pixels. 0 before the first frame
+	{ "Surface", "width",           f_surface_w },
+	{ "Surface", "height",          f_surface_h },
+	// @api Surface.scale -> Num                the output scale, as in 1.5
+	{ "Surface", "scale",           f_surface_scale },
+	// @api Surface.size -> Num                 the font size in use, logical pixels
+	{ "Surface", "size",            f_font_px },
 	// @api Grid.text(x, y, str, style)
 	{ "Grid",    "text(_,_,_,_)",   f_text },
 	// @api Grid.fill(x, y, w, h, style)

@@ -87,7 +87,7 @@ void msg_watch_read(void);
 
 void wl_set_layer(const char *name);        /* before wl_open */
 void wl_set_anchor(const char *spec);
-void wl_set_margin(int top, int right, int bottom, int left);   /* cells */
+void wl_set_margin(int top, int right, int bottom, int left);   /* logical px */
 void wl_set_exclusive(int cells);           /* -1 = ignore */
 void wl_set_keyboard(int on);               /* -1 = follow exclusive */
 void wl_set_scale(int n);                   /* 0 = follow the output */
@@ -96,6 +96,8 @@ void wl_set_outline(int device_px);         /* grows the surface, not the cells 
 int  wl_connect(void);                      /* bind the globals */
 int  wl_scale120(void);                     /* device pixels per 120 logical */
 int  wl_align(void);                        /* cell must divide by this */
+int  wl_to_logical(int device);             /* device pixels to logical */
+void wl_logical_size(int *w, int *h);       /* the surface, in logical px */
 void wl_rescale(void);                       /* after the font was reopened */
 int  wl_open(int cols, int rows);           /* 0 on an axis = fill */
 void wl_stop(void);
@@ -126,6 +128,9 @@ void app_on_tick(void);                /* the Surface.every timer fired */
 void app_on_message(const char *line); /* a line arrived on a channel */
 void app_on_change(const char *path);  /* a watched file was written */
 void app_rescale(void);                /* the surface scale changed */
+void app_font(void);                   /* the font or the scale changed */
+void app_cell(int *w, int *h);         /* the cell, in logical pixels */
+int  app_font_px(void);                /* the size in use, logical pixels */
 
 /* --------------------------------------------------------------- script */
 /* script_wren.c is the only file that includes wren.h. */

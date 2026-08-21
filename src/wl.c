@@ -48,7 +48,7 @@ static struct {
 	char want_output[64];
 	uint32_t layer_id;
 	uint32_t anchor;
-	int margin[4];    /* cells: top, right, bottom, left */
+	int margin[4];    /* logical px: top, right, bottom, left */
 	int exclusive;    /* cells. -1 = ignore other surfaces */
 	int keyboard;     /* -1 follows exclusive, else 0 or 1 */
 	int width;        /* buffer, in device pixels */
@@ -174,11 +174,17 @@ static int to_device(int logical)
 	return (logical * wl_scale120() + 119) / 120;
 }
 
-static int to_logical(int device)
+int wl_to_logical(int device)
 {
 	int scale = wl_scale120();
 
 	return (device * 120 + scale / 2) / scale;
+}
+
+void wl_logical_size(int *w, int *h)
+{
+	*w = W.logical_w;
+	*h = W.logical_h;
 }
 
 /* Device pixels. A script sized axis is a whole number of cells; going
@@ -616,21 +622,17 @@ int wl_open(int cols, int rows)
 		int want_h = rows * ch + 2 * W.outline;
 
 		zwlr_layer_surface_v1_set_size(W.layer,
-			cols > 0 ? (uint32_t)(fractional() ? to_logical(want_w)
+			cols > 0 ? (uint32_t)(fractional() ? wl_to_logical(want_w)
 							   : want_w) : 0,
-			rows > 0 ? (uint32_t)(fractional() ? to_logical(want_h)
+			rows > 0 ? (uint32_t)(fractional() ? wl_to_logical(want_h)
 							   : want_h) : 0);
 	}
 	zwlr_layer_surface_v1_set_anchor(W.layer, anchor);
-	/* The whole distance at once, or the rounding error multiplies. */
-	zwlr_layer_surface_v1_set_margin(W.layer,
-		fractional() ? to_logical(W.margin[0] * ch) : W.margin[0] * ch,
-		fractional() ? to_logical(W.margin[1] * cw) : W.margin[1] * cw,
-		fractional() ? to_logical(W.margin[2] * ch) : W.margin[2] * ch,
-		fractional() ? to_logical(W.margin[3] * cw) : W.margin[3] * cw);
+	zwlr_layer_surface_v1_set_margin(W.layer, W.margin[0], W.margin[1],
+					 W.margin[2], W.margin[3]);
 
 	zone = W.exclusive < 0 ? -1
-			       : (fractional() ? to_logical(W.exclusive * ch)
+			       : (fractional() ? wl_to_logical(W.exclusive * ch)
 					       : W.exclusive * ch);
 	zwlr_layer_surface_v1_set_exclusive_zone(W.layer, zone);
 
@@ -679,9 +681,9 @@ void wl_rescale(void)
 			cw, ch, W.outline);
 
 	zwlr_layer_surface_v1_set_size(W.layer,
-		W.want_cols > 0 ? (uint32_t)to_logical(W.want_cols * cw +
+		W.want_cols > 0 ? (uint32_t)wl_to_logical(W.want_cols * cw +
 						       2 * W.outline) : 0,
-		W.want_rows > 0 ? (uint32_t)to_logical(W.want_rows * ch +
+		W.want_rows > 0 ? (uint32_t)wl_to_logical(W.want_rows * ch +
 						       2 * W.outline) : 0);
 	wl_surface_commit(W.surface);
 
