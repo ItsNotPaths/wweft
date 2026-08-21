@@ -45,6 +45,17 @@ void render_set_outline(int thickness, int style)
 	outline_style = style;
 }
 
+/* Straight write, no blend: nothing is under it yet. */
+static void flat(uint32_t *pixels, int stride, int x0, int y0, int x1, int y1,
+		 uint32_t argb)
+{
+	int x, y;
+
+	for (y = y0; y < y1; y++)
+		for (x = x0; x < x1; x++)
+			pixels[y * stride + x] = argb;
+}
+
 static void band(uint32_t *pixels, int stride, int x0, int y0, int w, int h,
 		 uint32_t src)
 {
@@ -86,16 +97,35 @@ void render_frame(uint32_t *pixels, int width, int height)
 	int off = outline_px;      /* the cells sit inside the outline */
 	int cx, cy, x, y;
 
-	/* Paint every pixel first: a filled axis is rarely a whole number of
-	 * cells, and a reused buffer holds the last frame. */
+	/* Only what the cells never cover: the outline band, and the strip
+	 * past the last cell on a filled axis. A reused buffer holds the last
+	 * frame, so it cannot be left alone. */
 	{
 		uint32_t fg, bg;
-		int i, n = width * height;
+		int o = off;
+		int x1, y1;
+
+		/* The same clamp draw_outline uses, on a buffer too small to
+		 * hold the outline it was asked for. */
+		if (o > width / 2)
+			o = width / 2;
+		if (o > height / 2)
+			o = height / 2;
+
+		x1 = o + grid_full_cols() * cw;
+		y1 = o + grid_full_rows() * ch;
+		if (x1 > width)
+			x1 = width;
+		if (y1 > height)
+			y1 = height;
 
 		grid_style_colors(0, &fg, &bg);
 		bg = premultiply(bg);
-		for (i = 0; i < n; i++)
-			pixels[i] = bg;
+
+		flat(pixels, width, 0, 0, width, o, bg);
+		flat(pixels, width, 0, y1, width, height, bg);
+		flat(pixels, width, 0, o, o, y1, bg);
+		flat(pixels, width, x1, o, width, y1, bg);
 	}
 
 	/* Pass 1: the cell backgrounds. */
