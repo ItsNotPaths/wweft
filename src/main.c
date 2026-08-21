@@ -27,7 +27,7 @@ static int env_int(const char *name, int fallback)
 
 void app_resize(int cols, int rows)
 {
-	if (cols == grid_cols() && rows == grid_rows())
+	if (cols == grid_full_cols() && rows == grid_full_rows())
 		return;
 
 	if (grid_init(cols, rows) < 0) {
@@ -59,7 +59,8 @@ void app_on_blur(void)
 void app_on_tick(void)
 {
 	script_on_tick();
-	wl_redraw();
+	if (!app_pending())
+		wl_redraw();
 }
 
 void app_on_message(const char *line)
@@ -68,7 +69,8 @@ void app_on_message(const char *line)
 		fprintf(stderr, "message: %s\n", line);
 
 	script_on_message(line);
-	wl_redraw();
+	if (!app_pending())
+		wl_redraw();
 }
 
 /* The script gives logical pixels, so an outline is the same width on any
@@ -104,11 +106,78 @@ static void open_font(void)
 	font_ready = 1;
 }
 
-/* The script set the font, or the scale that sizes it. */
+/* A border is outside the script's size: 10 by 10 becomes 12 by 12. A
+ * filled axis keeps its 0 and loses two cells at the configure. */
+static void window_size(int *cols, int *rows)
+{
+	script_window_size(cols, rows);
+
+	grid_set_inset(script_border(NULL, NULL) ? 1 : 0);
+	if (!script_border(NULL, NULL))
+		return;
+
+	if (*cols > 0)
+		*cols += 2;
+	if (*rows > 0)
+		*rows += 2;
+}
+
+/* ------------------------------------------------- changes from the script */
+
+/* A script changes things inside a callback. Nothing is applied there: the
+ * loop flushes once, so five calls cost one commit and no frame is drawn at
+ * a size that lasted a microsecond. */
+enum { DIRTY_ATTRS = 1, DIRTY_GEOMETRY = 2 };
+
+static int dirty;
+static int live;         /* the surface is up and the loop is running */
+
+void app_dirty_attrs(void)
+{
+	if (live)
+		dirty |= DIRTY_ATTRS;
+}
+
+void app_dirty_geometry(void)
+{
+	if (live)
+		dirty |= DIRTY_GEOMETRY;
+}
+
+int app_pending(void)
+{
+	return dirty != 0;
+}
+
+void app_flush(void)
+{
+	int cols, rows;
+
+	if (!dirty)
+		return;
+
+	if (dirty & DIRTY_ATTRS)
+		wl_apply();
+
+	if (dirty & DIRTY_GEOMETRY) {
+		apply_outline();
+		window_size(&cols, &rows);
+		wl_resize(cols, rows);
+		wl_rescale();       /* the cell may have changed size too */
+	}
+
+	dirty = 0;
+	wl_redraw();
+}
+
+/* The script set the font, or the scale that sizes it. The metrics are
+ * wanted at once, because Surface.cellW answers from them. The surface
+ * catches up at the flush. */
 void app_font(void)
 {
 	open_font();
 	apply_outline();
+	app_dirty_geometry();
 }
 
 /* The cell, in logical pixels. A script asks for it to lay out in pixel
@@ -145,7 +214,8 @@ void app_on_change(const char *path)
 		fprintf(stderr, "change: %s\n", path);
 
 	script_on_change(path);
-	wl_redraw();
+	if (!app_pending())
+		wl_redraw();
 }
 
 int app_on_key(const char *name)
@@ -216,17 +286,7 @@ int main(int argc, char **argv)
 		open_font();
 	apply_outline();
 
-	script_window_size(&cols, &rows);
-
-	/* A border is outside the script's size: 10 by 10 becomes 12 by 12.
-	 * A filled axis keeps its 0 and loses two cells at the configure. */
-	if (script_border(NULL, NULL)) {
-		grid_set_inset(1);
-		if (cols > 0)
-			cols += 2;
-		if (rows > 0)
-			rows += 2;
-	}
+	window_size(&cols, &rows);
 
 	if (grid_init(cols > 0 ? cols : 1, rows > 0 ? rows : 1) < 0) {
 		fprintf(stderr, "wweft: out of memory\n");
@@ -243,6 +303,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	live = 1;
 	code = loop_run();
 	msg_stop();
 

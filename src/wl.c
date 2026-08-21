@@ -583,10 +583,61 @@ int wl_connect(void)
 	return 0;
 }
 
-int wl_open(int cols, int rows)
+static uint32_t full_anchor(void)
 {
 	uint32_t anchor = W.anchor;
-	int cw, ch, zone;
+
+	if (W.want_cols < 1)
+		anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+			  ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+	if (W.want_rows < 1)
+		anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+			  ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+	return anchor;
+}
+
+/* Everything the compositor keeps for us that is not the buffer. It is all
+ * double buffered, so one commit shows the lot. */
+void wl_apply(void)
+{
+	int ch = fractional() ? font_cell_h() : font_cell_h() / W.scale;
+	int zone;
+
+	if (!W.layer)
+		return;
+
+	zwlr_layer_surface_v1_set_anchor(W.layer, full_anchor());
+	zwlr_layer_surface_v1_set_margin(W.layer, W.margin[0], W.margin[1],
+					 W.margin[2], W.margin[3]);
+
+	zone = W.exclusive < 0 ? -1
+			       : (fractional() ? wl_to_logical(W.exclusive * ch)
+					       : W.exclusive * ch);
+	zwlr_layer_surface_v1_set_exclusive_zone(W.layer, zone);
+	zwlr_layer_surface_v1_set_keyboard_interactivity(W.layer,
+							 (uint32_t)keyboard_on());
+
+	if (zwlr_layer_surface_v1_get_version(W.layer) >=
+	    ZWLR_LAYER_SURFACE_V1_SET_LAYER_SINCE_VERSION)
+		zwlr_layer_surface_v1_set_layer(W.layer, W.layer_id);
+
+	wl_surface_commit(W.surface);
+}
+
+/* Glyph space. The anchor goes with it, because a 0 axis stretches. The
+ * buffers follow at the next wl_rescale. */
+void wl_resize(int cols, int rows)
+{
+	W.want_cols = cols;
+	W.want_rows = rows;
+
+	if (W.layer)
+		zwlr_layer_surface_v1_set_anchor(W.layer, full_anchor());
+}
+
+int wl_open(int cols, int rows)
+{
+	int cw, ch;
 
 	W.want_cols = cols;
 	W.want_rows = rows;
@@ -594,14 +645,6 @@ int wl_open(int cols, int rows)
 	/* The cell is device sized. The layer surface speaks logical. */
 	cw = fractional() ? font_cell_w() : font_cell_w() / W.scale;
 	ch = fractional() ? font_cell_h() : font_cell_h() / W.scale;
-
-	/* A 0 axis stretches between two edges. */
-	if (cols < 1)
-		anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
-			  ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
-	if (rows < 1)
-		anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
-			  ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
 
 	W.surface = wl_compositor_create_surface(W.compositor);
 
@@ -627,17 +670,8 @@ int wl_open(int cols, int rows)
 			rows > 0 ? (uint32_t)(fractional() ? wl_to_logical(want_h)
 							   : want_h) : 0);
 	}
-	zwlr_layer_surface_v1_set_anchor(W.layer, anchor);
-	zwlr_layer_surface_v1_set_margin(W.layer, W.margin[0], W.margin[1],
-					 W.margin[2], W.margin[3]);
+	wl_apply();
 
-	zone = W.exclusive < 0 ? -1
-			       : (fractional() ? wl_to_logical(W.exclusive * ch)
-					       : W.exclusive * ch);
-	zwlr_layer_surface_v1_set_exclusive_zone(W.layer, zone);
-
-	zwlr_layer_surface_v1_set_keyboard_interactivity(W.layer,
-							 (uint32_t)keyboard_on());
 	/* With a viewport the buffer scale stays 1. */
 	if (!fractional())
 		wl_surface_set_buffer_scale(W.surface, W.scale);

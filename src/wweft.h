@@ -100,6 +100,8 @@ int  wl_to_logical(int device);             /* device pixels to logical */
 void wl_logical_size(int *w, int *h);       /* the surface, in logical px */
 void wl_rescale(void);                       /* after the font was reopened */
 int  wl_open(int cols, int rows);           /* 0 on an axis = fill */
+void wl_apply(void);                        /* margin, anchor, zone, layer */
+void wl_resize(int cols, int rows);         /* cells. 0 on an axis = fill */
 void wl_stop(void);
 void wl_redraw(void);
 int  wl_get_fd(void);
@@ -129,6 +131,10 @@ void app_on_message(const char *line); /* a line arrived on a channel */
 void app_on_change(const char *path);  /* a watched file was written */
 void app_rescale(void);                /* the surface scale changed */
 void app_font(void);                   /* the font or the scale changed */
+void app_dirty_attrs(void);            /* margin, anchor, zone, layer */
+void app_dirty_geometry(void);         /* size, font, border, outline */
+void app_flush(void);                  /* apply what the script changed */
+int  app_pending(void);                /* a change is waiting on the flush */
 void app_cell(int *w, int *h);         /* the cell, in logical pixels */
 int  app_font_px(void);                /* the size in use, logical pixels */
 

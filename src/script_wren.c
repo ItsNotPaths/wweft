@@ -252,22 +252,26 @@ static void f_window(WrenVM *vm)
 {
 	S.cols = (int)wrenGetSlotDouble(vm, 1);
 	S.rows = (int)wrenGetSlotDouble(vm, 2);
+	app_dirty_geometry();
 }
 
 static void f_anchor(WrenVM *vm)
 {
 	wl_set_anchor(wrenGetSlotString(vm, 1));
+	app_dirty_attrs();
 }
 
 static void f_margin(WrenVM *vm)
 {
 	wl_set_margin((int)wrenGetSlotDouble(vm, 1), (int)wrenGetSlotDouble(vm, 2),
 		      (int)wrenGetSlotDouble(vm, 3), (int)wrenGetSlotDouble(vm, 4));
+	app_dirty_attrs();
 }
 
 static void f_layer(WrenVM *vm)
 {
 	wl_set_layer(wrenGetSlotString(vm, 1));
+	app_dirty_attrs();
 }
 
 /* The scale sizes the cell, so a font already open is now the wrong size. */
@@ -280,11 +284,13 @@ static void f_scale(WrenVM *vm)
 static void f_exclusive(WrenVM *vm)
 {
 	wl_set_exclusive((int)wrenGetSlotDouble(vm, 1));
+	app_dirty_attrs();
 }
 
 static void f_keyboard(WrenVM *vm)
 {
 	wl_set_keyboard(wrenGetSlotBool(vm, 1) ? 1 : 0);
+	app_dirty_attrs();
 }
 
 static void f_dismiss(WrenVM *vm)
@@ -311,22 +317,31 @@ static void f_border(WrenVM *vm)
 	size_t i;
 
 	S.border_style = (int)wrenGetSlotDouble(vm, 2);
-	S.border_on = 1;
+	S.border_on = spec[0] != 0;   /* "" takes it away again */
+
+	if (!S.border_on) {
+		S.border_chars[0] = 0;
+		app_dirty_geometry();
+		return;
+	}
 
 	for (i = 0; i < sizeof sets / sizeof *sets; i++) {
 		if (strcmp(spec, sets[i].name) == 0) {
 			snprintf(S.border_chars, sizeof S.border_chars, "%s",
 				 sets[i].chars);
+			app_dirty_geometry();
 			return;
 		}
 	}
 	snprintf(S.border_chars, sizeof S.border_chars, "%s", spec);
+	app_dirty_geometry();
 }
 
 static void f_outline(WrenVM *vm)
 {
 	S.outline_px = (int)wrenGetSlotDouble(vm, 1);
 	S.outline_style = (int)wrenGetSlotDouble(vm, 2);
+	app_dirty_geometry();
 }
 
 static void f_every(WrenVM *vm)
@@ -638,7 +653,7 @@ static const struct entry methods[] = {
 	{ "Surface", "keyboard(_)",     f_keyboard },
 	// @api Surface.dismiss(flag)               close when the focus leaves. Default true
 	{ "Surface", "dismiss(_)",      f_dismiss },
-	// @api Surface.border(chars[, style])      "line" "round" "double" "heavy" "ascii" "block", or six of your own. The window grows one cell on every side
+	// @api Surface.border(chars[, style])      "line" "round" "double" "heavy" "ascii" "block", six of your own, or "" for none. The window grows one cell on every side
 	{ "Surface", "borderSet(_,_)",  f_border },
 	// @api Surface.outline(px[, style])        a line px logical thick, outside the cells. The surface grows, the grid does not shrink
 	{ "Surface", "outlineSet(_,_)", f_outline },

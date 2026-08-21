@@ -141,7 +141,7 @@ void input_timer_fire(void)
 	if (!I.repeat_key)
 		return;
 
-	if (app_on_key(I.repeat_name))
+	if (app_on_key(I.repeat_name) && !app_pending())
 		wl_redraw();
 }
 
@@ -222,7 +222,7 @@ static void on_key(void *data, struct wl_keyboard *kb, uint32_t serial,
 
 	repeat_start(code, key, name);
 
-	if (app_on_key(name))
+	if (app_on_key(name) && !app_pending())
 		wl_redraw();
 }
 

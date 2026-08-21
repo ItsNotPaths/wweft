@@ -161,6 +161,9 @@ int loop_run(void)
 			if (fds[FD_FIXED + i].revents & POLLIN)
 				msg_read(i);
 
+		/* One place applies what the callbacks asked for. */
+		app_flush();
+
 		if (fds[FD_WAYLAND].revents & (POLLERR | POLLHUP))
 			return 1;
 
