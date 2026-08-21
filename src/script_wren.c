@@ -73,6 +73,8 @@ static const char *module_src =
 "  foreign static width\n"
 "  foreign static height\n"
 "  foreign static scale\n"
+"  foreign static screenW\n"
+"  foreign static screenH\n"
 "  foreign static size\n"
 "\n"
 // @api Surface.sh(cmd[, ms]) -> [out, rc]  popen with a deadline
@@ -561,6 +563,22 @@ static void f_surface_h(WrenVM *vm)
 	wrenSetSlotDouble(vm, 0, h);
 }
 
+static void f_screen_w(WrenVM *vm)
+{
+	int w, h;
+
+	wl_screen_size(&w, &h);
+	wrenSetSlotDouble(vm, 0, w);
+}
+
+static void f_screen_h(WrenVM *vm)
+{
+	int w, h;
+
+	wl_screen_size(&w, &h);
+	wrenSetSlotDouble(vm, 0, h);
+}
+
 static void f_surface_scale(WrenVM *vm)
 {
 	wrenSetSlotDouble(vm, 0, (double)wl_scale120() / 120.0);
@@ -699,6 +717,9 @@ static const struct entry methods[] = {
 	// @api Surface.width, Surface.height       the surface, in logical pixels. 0 before the first frame
 	{ "Surface", "width",           f_surface_w },
 	{ "Surface", "height",          f_surface_h },
+	// @api Surface.screenW, Surface.screenH   the screen it is on, in logical pixels
+	{ "Surface", "screenW",         f_screen_w },
+	{ "Surface", "screenH",         f_screen_h },
 	// @api Surface.scale -> Num                the output scale, as in 1.5
 	{ "Surface", "scale",           f_surface_scale },
 	// @api Surface.size -> Num                 the font size in use, logical pixels

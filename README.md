@@ -73,6 +73,7 @@ move.
 | `examples/bar.wren` | a bar: workspaces, a clock, no keyboard |
 | `examples/hypr.wren` | Hyprland state for `bar.wren`, imported by name |
 | `examples/notify.wren` | one notification, one process, ends itself |
+| `examples/bounce.wren` | a box that runs, jumps and wobbles. The surface is the box |
 
 The palette is four numbers at the top of each script.
 

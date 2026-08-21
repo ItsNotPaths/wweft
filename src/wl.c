@@ -44,7 +44,10 @@ static struct {
 	int scale120;     /* device pixels for 120 logical pixels. 0 = not told */
 	struct wl_output *outputs[8];
 	char output_names[8][64];
+	int output_w[8], output_h[8];   /* the current mode, device pixels */
+	int output_turned[8];           /* 90 or 270: the mode is on its side */
 	int output_count;
+	struct wl_output *on;           /* the output the surface is showing on */
 	char want_output[64];
 	uint32_t layer_id;
 	uint32_t anchor;
@@ -450,18 +453,49 @@ static const struct wp_fractional_scale_v1_listener fscale_listener = {
 
 /* --------------------------------------------------------------- output */
 
+static int output_slot(struct wl_output *o)
+{
+	int i;
+
+	for (i = 0; i < W.output_count; i++)
+		if (W.outputs[i] == o)
+			return i;
+	return -1;
+}
+
 static void out_geometry(void *d, struct wl_output *o, int32_t x, int32_t y,
 			 int32_t pw, int32_t ph, int32_t sub, const char *make,
 			 const char *model, int32_t transform)
 {
-	(void)d; (void)o; (void)x; (void)y; (void)pw; (void)ph;
-	(void)sub; (void)make; (void)model; (void)transform;
+	int i;
+
+	(void)d; (void)x; (void)y; (void)pw; (void)ph; (void)sub;
+	(void)make; (void)model;
+
+	i = output_slot(o);
+	if (i < 0)
+		return;
+
+	/* A screen on its side reports its mode the way the panel is wired,
+	 * not the way it is hung. */
+	W.output_turned[i] = transform == WL_OUTPUT_TRANSFORM_90 ||
+			     transform == WL_OUTPUT_TRANSFORM_270 ||
+			     transform == WL_OUTPUT_TRANSFORM_FLIPPED_90 ||
+			     transform == WL_OUTPUT_TRANSFORM_FLIPPED_270;
 }
 
 static void out_mode(void *d, struct wl_output *o, uint32_t flags,
 		     int32_t w, int32_t h, int32_t refresh)
 {
-	(void)d; (void)o; (void)flags; (void)w; (void)h; (void)refresh;
+	int i = output_slot(o);
+
+	(void)d; (void)refresh;
+
+	if (i < 0 || !(flags & WL_OUTPUT_MODE_CURRENT))
+		return;
+
+	W.output_w[i] = w;
+	W.output_h[i] = h;
 }
 
 static void out_done(void *d, struct wl_output *o)
@@ -497,6 +531,54 @@ static void out_description(void *d, struct wl_output *o, const char *desc)
 static const struct wl_output_listener output_listener = {
 	out_geometry, out_mode, out_done, out_scale, out_name, out_description
 };
+
+/* -------------------------------------------------------------- surface */
+
+/* A client is never told where it is. It is told which screen it is on, and
+ * it set its own margin, so between the two it knows. */
+static void surf_enter(void *d, struct wl_surface *s, struct wl_output *o)
+{
+	(void)d; (void)s;
+	W.on = o;
+}
+
+static void surf_leave(void *d, struct wl_surface *s, struct wl_output *o)
+{
+	(void)d; (void)s;
+	if (W.on == o)
+		W.on = NULL;
+}
+
+static void surf_buffer_scale(void *d, struct wl_surface *s, int32_t factor)
+{
+	(void)d; (void)s; (void)factor;
+}
+
+static void surf_buffer_transform(void *d, struct wl_surface *s, uint32_t t)
+{
+	(void)d; (void)s; (void)t;
+}
+
+static const struct wl_surface_listener surface_listener = {
+	surf_enter, surf_leave, surf_buffer_scale, surf_buffer_transform
+};
+
+/* The usable screen, in the same logical pixels as the margin. */
+void wl_screen_size(int *w, int *h)
+{
+	int i = W.on ? output_slot(W.on) : -1;
+
+	if (i < 0)
+		i = W.output_count > 0 ? 0 : -1;
+
+	if (i < 0) {
+		*w = *h = 0;
+		return;
+	}
+
+	*w = wl_to_logical(W.output_turned[i] ? W.output_h[i] : W.output_w[i]);
+	*h = wl_to_logical(W.output_turned[i] ? W.output_w[i] : W.output_h[i]);
+}
 
 /* ------------------------------------------------------------ registry */
 
@@ -623,8 +705,6 @@ void wl_apply(void)
 	if (zwlr_layer_surface_v1_get_version(W.layer) >=
 	    ZWLR_LAYER_SURFACE_V1_SET_LAYER_SINCE_VERSION)
 		zwlr_layer_surface_v1_set_layer(W.layer, W.layer_id);
-
-	wl_surface_commit(W.surface);
 }
 
 /* Glyph space. The anchor goes with it, because a 0 axis stretches. The
@@ -650,6 +730,7 @@ int wl_open(int cols, int rows)
 	ch = fractional() ? font_cell_h() : font_cell_h() / W.scale;
 
 	W.surface = wl_compositor_create_surface(W.compositor);
+	wl_surface_add_listener(W.surface, &surface_listener, NULL);
 
 	if (W.viewporter && W.fsm) {
 		W.viewport = wp_viewporter_get_viewport(W.viewporter, W.surface);
@@ -717,27 +798,34 @@ void wl_rescale(void)
 		fprintf(stderr, "rescale: cell=%dx%d outline=%d\n",
 			cw, ch, W.outline);
 
+	int px_w, px_h;
+
 	zwlr_layer_surface_v1_set_size(W.layer,
 		W.want_cols > 0 ? (uint32_t)wl_to_logical(W.want_cols * cw +
 						       2 * W.outline) : 0,
 		W.want_rows > 0 ? (uint32_t)wl_to_logical(W.want_rows * ch +
 						       2 * W.outline) : 0);
-	wl_surface_commit(W.surface);
 
-	buffer_size(W.logical_w, W.logical_h, &W.width, &W.height);
-	if (make_buffers() < 0) {
-		loop_quit(1);
-		return;
+	buffer_size(W.logical_w, W.logical_h, &px_w, &px_h);
+
+	/* A move, or a resize the cells absorbed, keeps the buffers it has.
+	 * Rebuilding them every frame is a memfd and an mmap every frame. */
+	if (px_w != W.width || px_h != W.height) {
+		W.width = px_w;
+		W.height = px_h;
+		if (make_buffers() < 0) {
+			loop_quit(1);
+			return;
+		}
+		app_resize((W.width - 2 * W.outline) / cw > 0
+				? (W.width - 2 * W.outline) / cw : 1,
+			   (W.height - 2 * W.outline) / ch > 0
+				? (W.height - 2 * W.outline) / ch : 1);
 	}
+
 	if (W.viewport)
 		wp_viewport_set_destination(W.viewport, W.logical_w, W.logical_h);
 
-	{
-		int c = (W.width - 2 * W.outline) / cw;
-		int r = (W.height - 2 * W.outline) / ch;
-
-		app_resize(c > 0 ? c : 1, r > 0 ? r : 1);
-	}
 	draw();
 	W.drawn = true;
 }
