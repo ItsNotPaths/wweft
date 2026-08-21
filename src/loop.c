@@ -22,35 +22,15 @@ static int has_deadline;
 
 void loop_lifetime(int ms)
 {
-	if (ms <= 0) {
-		has_deadline = 0;
-		return;
-	}
-
-	clock_gettime(CLOCK_MONOTONIC, &deadline);
-	deadline.tv_sec += ms / 1000;
-	deadline.tv_nsec += (long)(ms % 1000) * 1000000L;
-	if (deadline.tv_nsec >= 1000000000L) {
-		deadline.tv_sec++;
-		deadline.tv_nsec -= 1000000000L;
-	}
-	has_deadline = 1;
+	has_deadline = ms > 0;
+	if (has_deadline)
+		deadline_set(&deadline, ms);
 }
 
-/* Milliseconds left, 0 when the time is up, -1 when there is no deadline. */
+/* What poll() wants: milliseconds left, or -1 to wait for ever. */
 static int time_left(void)
 {
-	struct timespec now;
-	long ms;
-
-	if (!has_deadline)
-		return -1;
-
-	clock_gettime(CLOCK_MONOTONIC, &now);
-	ms = (long)(deadline.tv_sec - now.tv_sec) * 1000 +
-	     (deadline.tv_nsec - now.tv_nsec) / 1000000L;
-
-	return ms > 0 ? (int)ms : 0;
+	return has_deadline ? deadline_left(&deadline) : -1;
 }
 
 /* A whole number of seconds starts on the next second boundary, so a clock

@@ -43,150 +43,8 @@ static struct {
 } S;
 
 /* ------------------------------------------------------- embedded module */
-
-static const char *module_src =
-"class Surface {\n"
-"  foreign static font(path, size)\n"
-"  foreign static window(cols, rows)\n"
-"  foreign static anchor(spec)\n"
-"  foreign static margin(t, r, b, l)\n"
-"  foreign static layer(name)\n"
-"  foreign static scale(n)\n"
-"  foreign static exclusive(cells)\n"
-"  foreign static keyboard(flag)\n"
-"  foreign static dismiss(flag)\n"
-"  foreign static every(ms)\n"
-"  foreign static lifetime(ms)\n"
-"  foreign static listen(spec)\n"
-"  foreign static watch(path)\n"
-"  foreign static output(name)\n"
-"  foreign static borderSet(chars, style)\n"
-"  foreign static outlineSet(px, style)\n"
-"  foreign static close(code)\n"
-"  foreign static emit(text)\n"
-"  foreign static spawn(cmd)\n"
-"  foreign static read(path)\n"
-"  foreign static shWait(cmd, ms)\n"
-"  foreign static run(object)\n"
-"  foreign static cellW\n"
-"  foreign static cellH\n"
-"  foreign static width\n"
-"  foreign static height\n"
-"  foreign static scale\n"
-"  foreign static screenW\n"
-"  foreign static screenH\n"
-"  foreign static size\n"
-"\n"
-// @api Surface.sh(cmd[, ms]) -> [out, rc]  popen with a deadline
-"  static outline(px) { outlineSet(px, 0) }\n"
-"  static outline(px, style) { outlineSet(px, style) }\n"
-"  static border(chars) { borderSet(chars, 0) }\n"
-"  static border(chars, style) { borderSet(chars, style) }\n"
-"  static sh(cmd) { shWait(cmd, 0) }\n"
-"  static sh(cmd, ms) { shWait(cmd, ms) }\n"
-"\n"
-"  // The output of a command, one item for each line, empty lines dropped.\n"
-// @api Surface.lines(cmd) -> list          output split, empty lines dropped
-"  static lines(cmd) {\n"
-"    var out = []\n"
-"    for (line in sh(cmd)[0].split(\"\\n\")) {\n"
-"      if (line.trim() != \"\") out.add(line)\n"
-"    }\n"
-"    return out\n"
-"  }\n"
-"}\n"
-"\n"
-"class Grid {\n"
-"  foreign static text(x, y, str, style)\n"
-"  foreign static fill(x, y, w, h, style)\n"
-"  foreign static width(str)\n"
-"  foreign static cols\n"
-"  foreign static rows\n"
-"\n"
-// @api Grid.center(y, str, style)
-"  static center(y, str, style) {\n"
-"    text(((cols - width(str)) / 2).floor, y, str, style)\n"
-"  }\n"
-"\n"
-"  // Draw a row of items and give back the column of each one.\n"
-// @api Grid.row(x, y, items, gap, style, selStyle, sel) -> columns
-"  static row(x, y, items, gap, style, selStyle, sel) {\n"
-"    var at = []\n"
-"    for (i in 0...items.count) {\n"
-"      at.add(x)\n"
-"      text(x, y, items[i], i == sel ? selStyle : style)\n"
-"      x = x + width(items[i]) + gap\n"
-"    }\n"
-"    return at\n"
-"  }\n"
-"}\n"
-"\n"
-"class Style {\n"
-"  foreign static define(fg, bg)\n"
-"\n"
-"  static setup_() {\n"
-"    __base = 0\n"
-"    __title = define(0xff7fbfff, 0xee151515)\n"
-"    __item = define(0xffcccccc, 0xee151515)\n"
-"    __sel = define(0xff151515, 0xff7fbfff)\n"
-"    __dim = define(0xff707070, 0xee151515)\n"
-"  }\n"
-// @api Style.base, title, item, sel, dim   ready made style ids
-"  static base { __base }\n"
-"  static title { __title }\n"
-"  static item { __item }\n"
-"  static sel { __sel }\n"
-"  static dim { __dim }\n"
-"}\n"
-"Style.setup_()\n"
-"\n"
-"class Sys {\n"
-"  foreign static time\n"
-"  foreign static strftime(format)\n"
-"  foreign static env(name)\n"
-"  foreign static args\n"
-"}\n"
-"\n"
-"class Text {\n"
-"  // ASCII only. Wren carries no Unicode case tables.\n"
-// @api Text.lower(s) -> str                ASCII only
-"  static lower(s) {\n"
-"    var out = \"\"\n"
-"    for (c in s.codePoints) {\n"
-"      out = out + String.fromCodePoint(c >= 65 && c <= 90 ? c + 32 : c)\n"
-"    }\n"
-"    return out\n"
-"  }\n"
-"\n"
-// @api Text.contains(a, b) -> bool         case insensitive
-"  static contains(haystack, needle) {\n"
-"    return lower(haystack).contains(lower(needle))\n"
-"  }\n"
-"\n"
-"  // Safe to put inside a shell command. An apostrophe in a file name\n"
-"  // breaks the command without this.\n"
-// @api Text.quote(s) -> str                safe inside a shell command
-"  static quote(s) {\n"
-"    return \"'\" + s.replace(\"'\", \"'\\\\''\") + \"'\"\n"
-"  }\n"
-"}\n"
-"\n"
-"class Key {\n"
-// @api Key.left, right, up, down, enter, escape, tab, space, backspace, delete, home, end
-"  static left { \"Left\" }\n"
-"  static right { \"Right\" }\n"
-"  static up { \"Up\" }\n"
-"  static down { \"Down\" }\n"
-"  static enter { \"Return\" }\n"
-"  static escape { \"Escape\" }\n"
-"  static tab { \"Tab\" }\n"
-"  foreign static text\n"
-"  static space { \"space\" }\n"
-"  static backspace { \"BackSpace\" }\n"
-"  static delete { \"Delete\" }\n"
-"  static home { \"Home\" }\n"
-"  static end { \"End\" }\n"
-"}\n";
+/* src/wweft.wren, without its comments. build.sh makes module.h. */
+#include "module.h"
 
 /* ------------------------------------------------------------- utilities */
 
@@ -439,6 +297,12 @@ static void f_spawn(WrenVM *vm)
 	if (pid == 0) {
 		setsid();
 		if (fork() == 0) {
+			/* stdout carries the choice. Keep the command off it. */
+			int null = open("/dev/null", O_WRONLY);
+			if (null >= 0) {
+				dup2(null, STDOUT_FILENO);
+				close(null);
+			}
 			execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
 			_exit(127);
 		}
@@ -496,11 +360,16 @@ static void f_sh(WrenVM *vm)
 
 	if (pid > 0) {
 		struct pollfd p = { .fd = fd[0], .events = POLLIN };
+		struct timespec end;
+
+		deadline_set(&end, limit_ms);
 
 		for (;;) {
 			char buf[4096];
+			char *bigger;
 			ssize_t n;
-			int ready = poll(&p, 1, limit_ms);
+			int left = deadline_left(&end);
+			int ready = left > 0 ? poll(&p, 1, left) : 0;
 
 			if (ready <= 0) {            /* deadline or error */
 				kill(pid, SIGKILL);
@@ -510,7 +379,12 @@ static void f_sh(WrenVM *vm)
 			if (n <= 0)
 				break;
 
-			out = realloc(out, len + (size_t)n + 1);
+			bigger = realloc(out, len + (size_t)n + 1);
+			if (!bigger) {
+				kill(pid, SIGKILL);
+				break;
+			}
+			out = bigger;
 			memcpy(out + len, buf, (size_t)n);
 			len += (size_t)n;
 			out[len] = 0;
@@ -531,53 +405,21 @@ static void f_sh(WrenVM *vm)
 
 /* ------------------------------------------------------- what is true now */
 
-static void f_cell_w(WrenVM *vm)
+/* Every size here comes in a pair. half is 0 for the width, 1 for the height. */
+static void give_half(WrenVM *vm, void (*pair)(int *, int *), int half)
 {
-	int w, h;
+	int wh[2];
 
-	app_cell(&w, &h);
-	wrenSetSlotDouble(vm, 0, w);
+	pair(&wh[0], &wh[1]);
+	wrenSetSlotDouble(vm, 0, wh[half]);
 }
 
-static void f_cell_h(WrenVM *vm)
-{
-	int w, h;
-
-	app_cell(&w, &h);
-	wrenSetSlotDouble(vm, 0, h);
-}
-
-static void f_surface_w(WrenVM *vm)
-{
-	int w, h;
-
-	wl_logical_size(&w, &h);
-	wrenSetSlotDouble(vm, 0, w);
-}
-
-static void f_surface_h(WrenVM *vm)
-{
-	int w, h;
-
-	wl_logical_size(&w, &h);
-	wrenSetSlotDouble(vm, 0, h);
-}
-
-static void f_screen_w(WrenVM *vm)
-{
-	int w, h;
-
-	wl_screen_size(&w, &h);
-	wrenSetSlotDouble(vm, 0, w);
-}
-
-static void f_screen_h(WrenVM *vm)
-{
-	int w, h;
-
-	wl_screen_size(&w, &h);
-	wrenSetSlotDouble(vm, 0, h);
-}
+static void f_cell_w(WrenVM *vm)    { give_half(vm, app_cell, 0); }
+static void f_cell_h(WrenVM *vm)    { give_half(vm, app_cell, 1); }
+static void f_surface_w(WrenVM *vm) { give_half(vm, wl_logical_size, 0); }
+static void f_surface_h(WrenVM *vm) { give_half(vm, wl_logical_size, 1); }
+static void f_screen_w(WrenVM *vm)  { give_half(vm, wl_screen_size, 0); }
+static void f_screen_h(WrenVM *vm)  { give_half(vm, wl_screen_size, 1); }
 
 static void f_surface_scale(WrenVM *vm)
 {
@@ -798,7 +640,7 @@ static WrenLoadModuleResult load_module(WrenVM *vm, const char *name)
 	(void)vm;
 
 	if (strcmp(name, "wweft") == 0) {
-		result.source = module_src;   /* static, so no onComplete */
+		result.source = wweft_module;   /* static, so no onComplete */
 		return result;
 	}
 

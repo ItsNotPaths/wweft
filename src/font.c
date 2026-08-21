@@ -38,6 +38,7 @@ static struct {
 	int scale_up;            /* whole number scale of the fallback */
 	char source[256];
 	struct entry cache[CACHE_SLOTS];
+	int used;                /* cache slots taken */
 } F;
 
 /* ---------------------------------------------------------------- search */
@@ -162,7 +163,7 @@ int font_open(const char *path, int px, int scale120, int align)
 {
 	const char *env;
 
-	memset(&F, 0, sizeof F);
+	font_close();   /* a second open must not leak the first one */
 
 	if (scale120 < 1)
 		scale120 = 120;
@@ -185,12 +186,23 @@ int font_open(const char *path, int px, int scale120, int align)
 	return 0;
 }
 
-void font_close(void)
+/* Open addressing needs free slots, or every miss probes the whole table.
+ * Rather than pick a glyph to lose, drop them all: the next frame rebuilds
+ * what is on screen, which is a few dozen glyphs. */
+static void cache_flush(void)
 {
 	int i;
 
-	for (i = 0; i < CACHE_SLOTS; i++)
+	for (i = 0; i < CACHE_SLOTS; i++) {
 		free(F.cache[i].own);
+		F.cache[i] = (struct entry){0};
+	}
+	F.used = 0;
+}
+
+void font_close(void)
+{
+	cache_flush();
 	if (F.file)
 		munmap(F.file, F.file_size);
 	memset(&F, 0, sizeof F);
@@ -260,12 +272,20 @@ const struct glyph *font_glyph(uint32_t cp)
 {
 	struct entry *e = slot_for(cp);
 
-	if (!e)
-		return NULL;
-	if (e->cp == cp)
+	if (e && e->cp == cp)
 		return e->g.alpha ? &e->g : NULL;
 
+	/* A quarter of the slots stay free, so the probe stays short. */
+	if (F.used >= CACHE_SLOTS * 3 / 4) {
+		cache_flush();
+		e = slot_for(cp);
+	}
+	if (!e)
+		return NULL;
+
 	e->cp = cp;
+	F.used++;
+
 	if (F.bitmap)
 		make_bitmap_glyph(e, cp);
 	else

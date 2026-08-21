@@ -65,7 +65,7 @@ void app_on_tick(void)
 
 void app_on_message(const char *line)
 {
-	if (getenv("WWEFT_DEBUG"))
+	if (wweft_debug())
 		fprintf(stderr, "message: %s\n", line);
 
 	script_on_message(line);
@@ -97,9 +97,6 @@ static void open_font(void)
 
 	if (script_font_done())
 		script_font(&path, &px);
-
-	if (font_ready)
-		font_close();
 
 	font_open(path, px, wl_scale120(), wl_align());
 	font_px = px;
@@ -211,7 +208,7 @@ int app_font_px(void)
 
 void app_rescale(void)
 {
-	if (getenv("WWEFT_DEBUG"))
+	if (wweft_debug())
 		fprintf(stderr, "rescale: scale120=%d\n", wl_scale120());
 
 	open_font();
@@ -222,7 +219,7 @@ void app_rescale(void)
 
 void app_on_change(const char *path)
 {
-	if (getenv("WWEFT_DEBUG"))
+	if (wweft_debug())
 		fprintf(stderr, "change: %s\n", path);
 
 	script_on_change(path);
@@ -232,7 +229,7 @@ void app_on_change(const char *path)
 
 int app_on_key(const char *name)
 {
-	if (getenv("WWEFT_DEBUG"))
+	if (wweft_debug())
 		fprintf(stderr, "key: %s\n", name);
 
 	return script_on_key(name);
@@ -320,7 +317,7 @@ int main(int argc, char **argv)
 	code = loop_run();
 	msg_stop();
 
-	if (getenv("WWEFT_DEBUG"))
+	if (wweft_debug())
 		fprintf(stderr, "wren heap at exit: %zu bytes\n", script_bytes());
 
 	script_close();

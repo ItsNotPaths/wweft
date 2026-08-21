@@ -41,7 +41,10 @@ static struct {
 	size_t pool_size;
 
 	int scale;        /* whole number fallback, when there is no viewporter */
-	int scale120;     /* device pixels for 120 logical pixels. 0 = not told */
+	int scale120;     /* device pixels for 120 logical pixels */
+	int scale_want;   /* what the script asked for. 0 = follow the output */
+	int scale_told;   /* the compositor's fractional scale. 0 = not told */
+	int scale_out;    /* the highest whole number scale the outputs gave */
 	struct wl_output *outputs[8];
 	char output_names[8][64];
 	int output_w[8], output_h[8];   /* the current mode, device pixels */
@@ -112,11 +115,29 @@ void wl_set_outline(int device_px)
 	W.outline = device_px > 0 ? device_px : 0;
 }
 
-/* 0 keeps the output scale. Call it before Surface.font. */
+/* One place decides the scale: the script wins, then the compositor's
+ * fractional report, then the whole number the outputs gave. */
+static void settle_scale(void)
+{
+	if (W.scale_want > 0) {
+		W.scale = W.scale_want;
+		W.scale120 = W.scale_want * 120;
+	} else if (W.scale_told > 0) {
+		W.scale120 = W.scale_told;
+		W.scale = (W.scale_told + 119) / 120;
+	} else {
+		W.scale = W.scale_out > 0 ? W.scale_out : 1;
+		W.scale120 = W.scale * 120;
+	}
+}
+
+/* 0 goes back to following the output. Any other number overrides it, on a
+ * fractional compositor as well: the viewport maps the buffer onto the
+ * logical size either way. */
 void wl_set_scale(int n)
 {
-	if (n > 0)
-		W.scale = n;
+	W.scale_want = n > 0 ? n : 0;
+	settle_scale();
 }
 
 /* Empty means: let the compositor choose. */
@@ -369,7 +390,7 @@ static void on_configure(void *data, struct zwlr_layer_surface_v1 *ls,
 
 	(void)data;
 
-	if (getenv("WWEFT_DEBUG"))
+	if (wweft_debug())
 		fprintf(stderr, "configure: %ux%u logical, scale120=%d\n",
 			width, height, W.scale120);
 
@@ -440,7 +461,7 @@ static void on_preferred_scale(void *data, struct wp_fractional_scale_v1 *fs,
 	(void)data;
 	(void)fs;
 
-	if (getenv("WWEFT_DEBUG"))
+	if (wweft_debug())
 		fprintf(stderr, "preferred scale: %u/120 = %.3f\n",
 			scale, (double)scale / 120.0);
 
@@ -448,11 +469,12 @@ static void on_preferred_scale(void *data, struct wp_fractional_scale_v1 *fs,
 		return;
 
 	W.got_scale = true;
+	W.scale_told = (int)scale;
 
-	if ((int)scale == W.scale120)
-		return;
+	if (W.scale_want > 0 || (int)scale == W.scale120)
+		return;   /* the script set the scale, or nothing moved */
 
-	W.scale120 = (int)scale;
+	settle_scale();
 
 	/* Corrects frame one, and fires again on a move between monitors. */
 	if (W.configured)
@@ -519,8 +541,9 @@ static void out_scale(void *d, struct wl_output *o, int32_t factor)
 {
 	(void)d; (void)o;
 
-	if (factor > W.scale)
-		W.scale = factor;
+	if (factor > W.scale_out)
+		W.scale_out = factor;
+	settle_scale();
 }
 
 static void out_name(void *d, struct wl_output *o, const char *name)
@@ -653,7 +676,6 @@ static const struct wl_registry_listener registry_listener = {
 
 int wl_connect(void)
 {
-	W.scale = 1;
 	W.exclusive = -1;
 	W.keyboard = -1;
 	W.layer_id = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
@@ -670,7 +692,7 @@ int wl_connect(void)
 	wl_display_roundtrip(W.display);   /* the output scale arrives */
 
 	/* Fix the guess now, so the cell and the surface use one number. */
-	W.scale120 = W.scale * 120;
+	settle_scale();
 
 	if (!W.compositor || !W.shm || !W.shell) {
 		fail("the compositor has no wlr-layer-shell support");
@@ -786,7 +808,7 @@ int wl_open(int cols, int rows)
 	if (!fractional())
 		wl_surface_set_buffer_scale(W.surface, W.scale);
 
-	if (getenv("WWEFT_DEBUG"))
+	if (wweft_debug())
 		fprintf(stderr, "open: scale120=%d cell=%dx%d outline=%d\n",
 			wl_scale120(), font_cell_w(), font_cell_h(), W.outline);
 
@@ -826,7 +848,7 @@ int wl_rescale(void)
 	want_h = W.want_rows > 0 ? wl_to_logical(W.want_rows * ch +
 						 2 * W.outline) : 0;
 
-	if (getenv("WWEFT_DEBUG"))
+	if (wweft_debug())
 		fprintf(stderr, "rescale: cell=%dx%d want=%dx%d have=%dx%d\n",
 			cw, ch, want_w, want_h, W.logical_w, W.logical_h);
 

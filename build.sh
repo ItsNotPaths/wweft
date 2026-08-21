@@ -109,6 +109,11 @@ fi
 "$root/tools/txt2h.sh" wweft_notices \
 	"$root/LICENSE" "$root/THIRD-PARTY.md" > "$out/notices.h"
 
+# The Wren module. Its comments are for the reader of src/wweft.wren, not
+# for the binary, so they are dropped on the way in.
+sed '/^[[:space:]]*\/\//d' "$root/src/wweft.wren" > "$out/module.wren"
+"$root/tools/txt2h.sh" wweft_module "$out/module.wren" > "$out/module.h"
+
 inc="-I$root/src -I$root/vendor/proto -I$root/vendor/stb -I$root/vendor/font -I$out"
 inc="$inc -I$root/vendor/wren/include -I$root/vendor/wren/vm -I$root/vendor/wren/optional"
 
@@ -141,8 +146,10 @@ ldflags="$ldflags ${EXTRA_LDFLAGS:-}"
 libs=$(pkg-config --libs wayland-client xkbcommon)
 
 proto=$(find "$root/vendor/proto" -name '*.c' | sort)
+# optional/ holds Meta and Random, and both are off. They would compile to
+# nothing, so they are not compiled at all.
 wren=""
-[ -d "$root/vendor/wren/vm" ] && wren=$(find "$root/vendor/wren/vm" "$root/vendor/wren/optional" -name '*.c' | sort)
+[ -d "$root/vendor/wren/vm" ] && wren=$(find "$root/vendor/wren/vm" -name '*.c' | sort)
 
 # Wren is third party code. It builds without the warning flags.
 objs=""

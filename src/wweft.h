@@ -4,10 +4,14 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <time.h>
 
 /* ------------------------------------------------------------------ util */
 
 void expand_home(const char *in, char *out, size_t size);   /* ~ to $HOME */
+int  wweft_debug(void);                    /* $WWEFT_DEBUG, read one time */
+void deadline_set(struct timespec *at, int ms);
+int  deadline_left(const struct timespec *at);   /* ms left, 0 when up */
 
 /* ------------------------------------------------------------------ font */
 

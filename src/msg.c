@@ -16,7 +16,8 @@
 
 #define MSG_MAX   4       /* channels one script may listen on */
 #define WATCH_MAX 8       /* files one script may watch */
-#define LINE_MAX  4096
+#define LINE_MAX  4096    /* one message line */
+#define PATH_LEN  1024    /* one file name */
 
 static struct {
 	int fd;
@@ -31,12 +32,12 @@ static int count;
 static struct {
 	int wd;
 	char base[256];          /* the file name inside the directory */
-	char full[LINE_MAX];     /* the path the script asked for */
+	char full[PATH_LEN];     /* the path the script asked for */
 	int changed;
-} W[WATCH_MAX];
+} WATCHES[WATCH_MAX];
 
 static int inotify = -1;
-static int watches;
+static int watch_count;
 
 /* A name becomes $XDG_RUNTIME_DIR/wweft-<name>. Anything with a slash is
  * taken as it is, and is opened as a unix socket. */
@@ -78,7 +79,7 @@ static int open_fifo(const char *path)
 
 int msg_listen(const char *spec)
 {
-	char path[LINE_MAX];
+	char path[PATH_LEN];
 	int fd;
 
 	if (count >= MSG_MAX)
@@ -107,17 +108,33 @@ int msg_fd(int i)
 	return i >= 0 && i < count ? M[i].fd : -1;
 }
 
+/* A peer that went away leaves the socket readable at end of file for ever.
+ * Close it, so poll() stops waking us with nothing to read. */
+static void retire(int i)
+{
+	close(M[i].fd);
+	M[i].fd = -1;
+	M[i].used = 0;
+}
+
 /* Read what is there and hand over each whole line. */
 void msg_read(int i)
 {
 	ssize_t n;
 
-	if (i < 0 || i >= count)
+	if (i < 0 || i >= count || M[i].fd < 0)
 		return;
 
 	n = read(M[i].fd, M[i].buf + M[i].used, sizeof M[i].buf - M[i].used - 1);
-	if (n <= 0)
+	if (n == 0) {
+		retire(i);
 		return;
+	}
+	if (n < 0) {
+		if (errno != EAGAIN && errno != EINTR)
+			retire(i);
+		return;
+	}
 
 	M[i].used += (size_t)n;
 	M[i].buf[M[i].used] = 0;
@@ -148,25 +165,26 @@ void msg_stop(void)
 	int i;
 
 	for (i = 0; i < count; i++)
-		close(M[i].fd);
+		if (M[i].fd >= 0)
+			close(M[i].fd);
 	count = 0;
 
 	if (inotify >= 0)
 		close(inotify);
 	inotify = -1;
-	watches = 0;
+	watch_count = 0;
 }
 
 /* ------------------------------------------------------------- watches */
 
 int msg_watch(const char *path)
 {
-	char full[LINE_MAX];
-	char dir[LINE_MAX];
+	char full[PATH_LEN];
+	char dir[PATH_LEN];
 	const char *slash;
 	int wd;
 
-	if (watches >= WATCH_MAX)
+	if (watch_count >= WATCH_MAX)
 		return -1;
 
 	expand_home(path, full, sizeof full);
@@ -196,12 +214,12 @@ int msg_watch(const char *path)
 		return -1;
 	}
 
-	W[watches].wd = wd;
-	snprintf(W[watches].base, sizeof W[watches].base, "%.255s",
+	WATCHES[watch_count].wd = wd;
+	snprintf(WATCHES[watch_count].base, sizeof WATCHES[watch_count].base, "%.255s",
 		 slash ? slash + 1 : full);
-	snprintf(W[watches].full, sizeof W[watches].full, "%s", full);
-	W[watches].changed = 0;
-	watches++;
+	snprintf(WATCHES[watch_count].full, sizeof WATCHES[watch_count].full, "%s", full);
+	WATCHES[watch_count].changed = 0;
+	watch_count++;
 	return 0;
 }
 
@@ -224,20 +242,20 @@ void msg_watch_read(void)
 		while (p < buf + n) {
 			const struct inotify_event *e = (const struct inotify_event *)p;
 
-			for (i = 0; i < watches; i++)
-				if (W[i].wd == e->wd && e->len > 0 &&
-				    strcmp(e->name, W[i].base) == 0)
-					W[i].changed = 1;
+			for (i = 0; i < watch_count; i++)
+				if (WATCHES[i].wd == e->wd && e->len > 0 &&
+				    strcmp(e->name, WATCHES[i].base) == 0)
+					WATCHES[i].changed = 1;
 
 			p += sizeof *e + e->len;
 		}
 	}
 
-	for (i = 0; i < watches; i++) {
-		if (!W[i].changed)
+	for (i = 0; i < watch_count; i++) {
+		if (!WATCHES[i].changed)
 			continue;
-		W[i].changed = 0;
-		app_on_change(W[i].full);
+		WATCHES[i].changed = 0;
+		app_on_change(WATCHES[i].full);
 	}
 }
 
@@ -245,7 +263,7 @@ void msg_watch_read(void)
  * reader gives ENXIO at once, instead of hanging the compositor bind. */
 int msg_send(const char *name, const char *text)
 {
-	char path[LINE_MAX];
+	char path[PATH_LEN];
 	int fd;
 	int ok;
 

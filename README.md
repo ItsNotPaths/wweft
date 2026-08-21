@@ -35,10 +35,11 @@ The choice goes to stdout. Exit code 0 means chosen, 1 means cancelled.
 
 ## API
 
-Tagged in source, in reading order:
+Tagged in source, in reading order. The C file holds what the surface and
+the grid do, `src/wweft.wren` holds the helpers written in Wren:
 
 ```sh
-grep -o '@api.*' src/script_wren.c
+cat src/script_wren.c src/wweft.wren | grep -o '@api.*'
 ```
 
 Key names come from xkbcommon: `a`, `A`, `Left`, `Ctrl+Left`, `Escape`.

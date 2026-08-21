@@ -176,7 +176,7 @@ static void on_keymap(void *data, struct wl_keyboard *kb, uint32_t format,
 
 	I.state = I.keymap ? xkb_state_new(I.keymap) : NULL;
 
-	if (getenv("WWEFT_DEBUG"))
+	if (wweft_debug())
 		fprintf(stderr, "keymap: %s\n", I.state ? "ok" : "failed");
 }
 
@@ -215,7 +215,7 @@ static void on_key(void *data, struct wl_keyboard *kb, uint32_t serial,
 	repeat_stop();
 
 	if (key_name(code, name, sizeof name) < 0) {
-		if (getenv("WWEFT_DEBUG"))
+		if (wweft_debug())
 			fprintf(stderr, "key: <no name> raw=%u\n", key);
 		return;
 	}
@@ -232,7 +232,7 @@ static void on_modifiers(void *data, struct wl_keyboard *kb, uint32_t serial,
 {
 	(void)data; (void)kb; (void)serial;
 
-	if (getenv("WWEFT_DEBUG"))
+	if (wweft_debug())
 		fprintf(stderr, "mods: %u %u %u group %u\n",
 			depressed, latched, locked, group);
 

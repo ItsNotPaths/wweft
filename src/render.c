@@ -45,6 +45,8 @@ void render_set_outline(int thickness, int style)
 	outline_style = style;
 }
 
+/* Both take the same rectangle: left, top, right, bottom. */
+
 /* Straight write, no blend: nothing is under it yet. */
 static void flat(uint32_t *pixels, int stride, int x0, int y0, int x1, int y1,
 		 uint32_t argb)
@@ -56,13 +58,13 @@ static void flat(uint32_t *pixels, int stride, int x0, int y0, int x1, int y1,
 			pixels[y * stride + x] = argb;
 }
 
-static void band(uint32_t *pixels, int stride, int x0, int y0, int w, int h,
+static void band(uint32_t *pixels, int stride, int x0, int y0, int x1, int y1,
 		 uint32_t src)
 {
 	int x, y;
 
-	for (y = y0; y < y0 + h; y++)
-		for (x = x0; x < x0 + w; x++)
+	for (y = y0; y < y1; y++)
+		for (x = x0; x < x1; x++)
 			pixels[y * stride + x] = over(src, pixels[y * stride + x]);
 }
 
@@ -84,9 +86,9 @@ static void draw_outline(uint32_t *pixels, int width, int height)
 	src = premultiply(fg);
 
 	band(pixels, width, 0, 0, width, t, src);
-	band(pixels, width, 0, height - t, width, t, src);
-	band(pixels, width, 0, t, t, height - 2 * t, src);
-	band(pixels, width, width - t, t, t, height - 2 * t, src);
+	band(pixels, width, 0, height - t, width, height, src);
+	band(pixels, width, 0, t, t, height - t, src);
+	band(pixels, width, width - t, t, width, height - t, src);
 }
 
 void render_frame(uint32_t *pixels, int width, int height)
