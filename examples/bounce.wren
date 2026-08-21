@@ -85,7 +85,13 @@ class Box {
     across(half, sw)
     down(sh)
 
+    // The squash is set by a hit, so the width can change after the walls
+    // were checked. A landing near a wall would push the wider box off the
+    // side of the screen.
     half = w / 2
+    _cx = _cx.max(half).min(sw - half)
+    _by = _by.max(h).min(sh)
+
     Surface.window(cols, rows)
     place(half, sw, sh)
   }
@@ -109,10 +115,13 @@ class Box {
     _vx = _vx * DRAG
     _cx = _cx + _vx
 
-    if (_cx - half < 0) {
+    // Only a box moving into the wall has hit it. A squash that widens the
+    // box can push it past the edge by itself, and that is a clamp, not a
+    // hit: counting it re-squashes every frame and the shape flickers.
+    if (_cx - half < 0 && _vx < 0) {
       _cx = half
       _side = -1
-    } else if (_cx + half > sw) {
+    } else if (_cx + half > sw && _vx > 0) {
       _cx = sw - half
       _side = 1
     } else {
@@ -141,7 +150,7 @@ class Box {
     _vy = _vy + GRAVITY
     _by = _by + _vy
 
-    if (_by > sh) {
+    if (_by > sh && _vy > 0) {
       _by = sh
       if (_vy > 4) {
         hit((_vy / 70).min(0.55))
@@ -151,7 +160,7 @@ class Box {
       } else {
         _vy = 0
       }
-    } else if (_by - h < 0) {
+    } else if (_by - h < 0 && _vy < 0) {
       _by = h
       if (_vy.abs > 4) hit((_vy.abs / 90).min(0.4))
       _vy = -_vy * BOUNCE
