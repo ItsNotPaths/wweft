@@ -82,6 +82,7 @@ void msg_watch_read(void);
 void wl_set_layer(const char *name);        /* before wl_open */
 void wl_set_anchor(const char *spec);
 void wl_set_margin(int top, int right, int bottom, int left);   /* cells */
+void wl_set_margin_px(int top, int right, int bottom, int left); /* logical px */
 void wl_set_exclusive(int cells);           /* -1 = ignore */
 void wl_set_scale(int n);                   /* 0 = follow the output */
 void wl_set_output(const char *name);       /* "" = the compositor chooses */

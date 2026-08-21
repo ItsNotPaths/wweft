@@ -48,7 +48,8 @@ static struct {
 	char want_output[64];
 	uint32_t layer_id;
 	uint32_t anchor;
-	int margin[4];    /* cells: top, right, bottom, left */
+	int margin[4];    /* top, right, bottom, left */
+	int margin_px;    /* margin[] is logical pixels, not cells */
 	int exclusive;    /* cells. -1 = ignore other surfaces */
 	int width;        /* buffer, in device pixels */
 	int height;
@@ -97,6 +98,20 @@ void wl_set_margin(int top, int right, int bottom, int left)
 	W.margin[1] = right;
 	W.margin[2] = bottom;
 	W.margin[3] = left;
+	W.margin_px = 0;
+}
+
+/* The same distances in logical pixels. A cell is the right unit for a menu,
+ * which is measured in rows, and the wrong one for lining a surface up with
+ * something the compositor placed: a window gap is a pixel count and rarely a
+ * whole number of cells. */
+void wl_set_margin_px(int top, int right, int bottom, int left)
+{
+	W.margin[0] = top;
+	W.margin[1] = right;
+	W.margin[2] = bottom;
+	W.margin[3] = left;
+	W.margin_px = 1;
 }
 
 /* Device pixels added outside the cells, on every side. */
@@ -614,11 +629,16 @@ int wl_open(int cols, int rows)
 	}
 	zwlr_layer_surface_v1_set_anchor(W.layer, anchor);
 	/* The whole distance at once, or the rounding error multiplies. */
-	zwlr_layer_surface_v1_set_margin(W.layer,
-		fractional() ? to_logical(W.margin[0] * ch) : W.margin[0] * ch,
-		fractional() ? to_logical(W.margin[1] * cw) : W.margin[1] * cw,
-		fractional() ? to_logical(W.margin[2] * ch) : W.margin[2] * ch,
-		fractional() ? to_logical(W.margin[3] * cw) : W.margin[3] * cw);
+	{
+		int mh = W.margin_px ? 1 : ch;
+		int mw = W.margin_px ? 1 : cw;
+
+		zwlr_layer_surface_v1_set_margin(W.layer,
+			fractional() ? to_logical(W.margin[0] * mh) : W.margin[0] * mh,
+			fractional() ? to_logical(W.margin[1] * mw) : W.margin[1] * mw,
+			fractional() ? to_logical(W.margin[2] * mh) : W.margin[2] * mh,
+			fractional() ? to_logical(W.margin[3] * mw) : W.margin[3] * mw);
+	}
 
 	zone = W.exclusive < 0 ? -1
 			       : (fractional() ? to_logical(W.exclusive * ch)
