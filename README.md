@@ -2,11 +2,8 @@
 
 WM agnostic wren TUI's/OSD's with no tty spawn/baggage.
 
-<img src="imgs/session.png" width="400" alt="session menu"> <img src="imgs/volume.png" width="300" alt="volume popup">
-<img src="imgs/dmenu.png" width="400" alt="dmenu"> <img src="imgs/browser.png" width="400" alt="file browser">
-<img src="imgs/bar.png" width="810" alt="bar: workspaces and a clock">
-
-<img src="imgs/reel.gif" width="700" alt="a box bouncing off every screen edge, then becoming a menu that gets typed into">
+<img src="imgs/reel.gif" width="720" alt="a box bouncing off every screen edge, then becoming a menu that gets typed into">
+<img src="imgs/apps.png" width="720" alt="a session menu, a volume popup, a dmenu, a file browser, and a bar">
 
 wweft puts a grid of text cells on a `wlr-layer-shell` surface and gives a
 Wren script the content. One binary, ~170 KB, no toolkit. A menu, a bar,
